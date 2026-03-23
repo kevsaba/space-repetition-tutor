@@ -45,8 +45,8 @@ yarn-error.log*
 *.swo
 *~
 
-# Prisma (keep migrations)
-# prisma/migrations/**/migration.sql
+# Prisma
+prisma/migrations/**/migration.sql.lock
 
 # Playwright
 test-results/

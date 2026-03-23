@@ -66,14 +66,13 @@ model Question {
   creator    User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
 
   // Optional template fields for pre-generated questions
-  expectedTopics String[]?  // Topics this question covers
+  expectedTopics String[]   // Topics this question covers
   hint           String?    @db.Text
 
   createdAt DateTime @default(now())
 
   // Relations
   userQuestions UserQuestion[]
-  answers       Answer[]
 
   @@index([topicId])
   @@index([type])
@@ -139,9 +138,6 @@ model Session {
 
   // Track context
   careerId    String?       // If interview mode, which career track
-
-  // Relations
-  answers     Answer[]      // Via userQuestion -> answer
 
   @@index([userId])
   @@index([status])
