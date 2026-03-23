@@ -79,7 +79,14 @@ async function main() {
   const databaseTopic = topics[3];
   const systemDesignTopic = topics[4];
 
-  const questions = [
+  const questions: Array<{
+    content: string;
+    type: 'CONCEPTUAL';
+    difficulty: 'MID';
+    topicId: string;
+    expectedTopics: string[];
+    hint: string;
+  }> = [
     // Java Concurrency questions
     {
       content: 'Explain the difference between synchronized blocks and ReentrantLock in Java. When would you choose one over the other?',
@@ -218,8 +225,12 @@ async function main() {
       },
       update: {},
       create: {
-        ...question,
-        id: undefined, // Let Prisma generate the ID
+        content: question.content,
+        type: question.type,
+        difficulty: question.difficulty,
+        topicId: question.topicId,
+        expectedTopics: question.expectedTopics,
+        hint: question.hint,
         isTemplate: true,
       },
     });
