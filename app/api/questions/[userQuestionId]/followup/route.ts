@@ -1,24 +1,23 @@
 /**
- * POST /api/questions/[userQuestionId]/answer
+ * POST /api/questions/[userQuestionId]/followup
  *
- * Submit an answer for a question.
- * Evaluates the answer using LLM and provides structured feedback.
- * If follow-ups are generated, the box update is deferred until all follow-ups are answered.
+ * Submit a follow-up answer for a question.
+ * Evaluates the follow-up answer using LLM and provides structured feedback.
+ * The box is NOT updated until all follow-ups are completed via the /complete endpoint.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { LeitnerService } from '@/lib/services/leitner.service';
 import { llmService, LLMError } from '@/lib/services/llm';
 import { authenticate } from '@/lib/middleware';
-import type { LLMFeedbackResponse, LLMFollowUpResponse } from '@/lib/services/llm/types';
+import type { LLMFeedbackResponse } from '@/lib/services/llm/types';
 import type { Prisma } from '@prisma/client';
 
 // Validation schema
-const answerSchema = z.object({
+const followUpAnswerSchema = z.object({
   answer: z.string().min(1),
-  mode: z.enum(['FREE', 'INTERVIEW']),
+  followUpQuestion: z.string().min(1), // The follow-up question text
   sessionId: z.string().optional(),
 });
 
@@ -32,7 +31,7 @@ interface RouteContext {
  * Fallback feedback when LLM fails
  */
 const FALLBACK_FEEDBACK: LLMFeedbackResponse['feedback'] = {
-  evaluation: 'We encountered an issue evaluating your answer. Please try again.',
+  evaluation: 'We encountered an issue evaluating your follow-up answer. Please try again.',
   higherLevelArticulation: 'N/A',
   correction: 'N/A',
   failureTimeline: 'N/A',
@@ -51,12 +50,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // Validate request body
     const body = await request.json();
-    const validatedData = answerSchema.parse(body);
+    const validatedData = followUpAnswerSchema.parse(body);
 
     // Fetch UserQuestion with question details
     const userQuestion = await prisma.userQuestion.findUnique({
       where: { id: userQuestionId },
-      include: { question: true },
+      include: {
+        question: true,
+        answers: {
+          where: { isFollowUp: false },
+          orderBy: { answeredAt: 'desc' },
+          take: 1,
+        },
+      },
     });
 
     if (!userQuestion) {
@@ -74,22 +80,30 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    // Evaluate answer using LLM
+    // Check that there's an original answer (follow-ups can only come after original)
+    if (userQuestion.answers.length === 0) {
+      return NextResponse.json(
+        { error: { code: 'INVALID_STATE', message: 'No original answer found. Please answer the original question first.' } },
+        { status: 400 },
+      );
+    }
+
+    // Evaluate follow-up answer using LLM
     let evaluation: LLMFeedbackResponse;
     let passed = false;
 
     try {
-      evaluation = await llmService.evaluateAnswer({
-        question: userQuestion.question.content,
+      evaluation = await llmService.evaluateFollowUp({
+        originalQuestion: userQuestion.question.content,
+        followUpQuestion: validatedData.followUpQuestion,
         userAnswer: validatedData.answer,
-        currentBox: userQuestion.box,
       });
       passed = evaluation.passed;
     } catch (error) {
       // If LLM fails, use fallback
       if (error instanceof LLMError) {
-        console.error('LLM evaluation failed:', error.message);
-        // Conservative: fail the question when evaluation fails
+        console.error('LLM follow-up evaluation failed:', error.message);
+        // Conservative: fail the follow-up when evaluation fails
         passed = false;
         evaluation = {
           passed: false,
@@ -100,29 +114,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
-    // Generate follow-up questions
-    let followUpQuestions: LLMFollowUpResponse['followUpQuestions'] = [];
-
-    try {
-      const followUpResponse = await llmService.generateFollowUp({
-        originalQuestion: userQuestion.question.content,
-        userAnswer: validatedData.answer,
-        passed,
-        mode: validatedData.mode,
-      });
-      followUpQuestions = followUpResponse.followUpQuestions;
-    } catch (error) {
-      // If follow-up generation fails, continue without follow-ups
-      if (error instanceof LLMError) {
-        console.error('LLM follow-up generation failed:', error.message);
-      } else {
-        console.error('Unexpected error during follow-up generation:', error);
-      }
-    }
-
-    const hasFollowUps = followUpQuestions.length > 0;
-
-    // Record answer with feedback (always record the original answer)
+    // Record follow-up answer with feedback
     await prisma.answer.create({
       data: {
         userQuestionId,
@@ -130,47 +122,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         passed,
         feedback: evaluation.feedback as unknown as Prisma.InputJsonValue,
         sessionId: validatedData.sessionId,
-        isFollowUp: false,
+        isFollowUp: true,
+        followUpQuestion: validatedData.followUpQuestion,
       },
     });
 
-    // If NO follow-ups, apply box transition immediately (backward compatible)
-    if (!hasFollowUps) {
-      const newBox = LeitnerService.calculateNewBox(userQuestion.box, passed);
-      const nextDueDate = LeitnerService.calculateNextDueDate(newBox);
-
-      // Update UserQuestion
-      await prisma.userQuestion.update({
-        where: { id: userQuestionId },
-        data: {
-          box: newBox,
-          dueDate: nextDueDate,
-          lastSeenAt: new Date(),
-          streak: passed ? userQuestion.streak + 1 : 0,
-        },
-      });
-
-      // Return response with immediate box update
-      return NextResponse.json({
-        passed,
-        newBox,
-        nextDueDate,
-        feedback: evaluation.feedback,
-        followUpQuestions,
-        hasFollowUps: false,
-        requiresCompletion: false,
-      });
-    }
-
-    // If follow-ups exist, hold box update until completion
-    // Return response indicating follow-ups are pending
+    // Return response with feedback
+    // The frontend is responsible for tracking how many follow-ups remain
     return NextResponse.json({
       passed,
       feedback: evaluation.feedback,
-      followUpQuestions,
-      hasFollowUps: true,
-      requiresCompletion: true,
-      remainingFollowUps: followUpQuestions.length,
     });
   } catch (error) {
     // Handle Zod validation errors
@@ -188,7 +149,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    console.error('Submit answer error:', error);
+    console.error('Submit follow-up answer error:', error);
     return NextResponse.json(
       { error: { code: 'INTERNAL_ERROR', message: 'An error occurred' } },
       { status: 500 },

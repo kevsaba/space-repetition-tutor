@@ -357,12 +357,85 @@ Every feature MUST include:
 6. **ALWAYS handle context limits with handoffs**
 7. **ALWAYS work on feature branches, never main**
 8. **ALWAYS document violations in CLAUDE.md**
+9. **ALWAYS include acceptance criteria for every task** (prevents missing features)
+10. **REVIEWER MUST verify implementation against PLANNING_AGENT_PROMPT.md** (not just code quality)
 
 ---
 
 ## Violation Log
 
-*No violations recorded yet.*
+### 2025-03-24 - Missing Feature Implementation
+
+**What happened:** Follow-up question evaluation was specified in `PLANNING_AGENT_PROMPT.md` but was not implemented. Only follow-up generation was implemented, not the evaluation that affects box progression.
+
+**Why it was wrong:**
+- The planning document stated: "Follow-up evaluation: Each follow-up is evaluated independently and affects the original question's box status"
+- ROADMAP.md task T2.4 only said "Implement follow-up question generation" - ambiguous language
+- No explicit acceptance criteria for the task
+- Success criteria only checked "contextually relevant" not evaluation behavior
+- Reviewer checked code quality but not compliance with planning document
+
+**How it was fixed:**
+- User discovered the issue during manual testing
+- Root cause analysis identified the gap
+- New process rules added below to prevent recurrence
+
+**Rule update:** Added "Task Definition Requirements" and enhanced "Reviewer Responsibilities" sections below.
+
+---
+
+## Task Definition Requirements
+
+**CRITICAL:** Every task in ROADMAP.md must have:
+
+1. **Unambiguous Name** - Include both action AND outcome
+   - ❌ Bad: "Implement follow-up question generation"
+   - ✅ Good: "Implement follow-up question generation AND evaluation affecting box level"
+
+2. **Acceptance Criteria** - "Definition of Done" for each task
+   - Must reference the specific section of PLANNING_AGENT_PROMPT.md
+   - Must be testable/verifiable
+   - Example: "Given: user answers question with follow-ups, When: all follow-ups pass, Then: box promotes"
+
+3. **Traceability** - Each task must link:
+   - Task → Planning Document Section → Expected Behavior → Test Case
+
+**Template for ROADMAP.md tasks:**
+```markdown
+| Task ID | Task | Acceptance Criteria | Planning Reference |
+|---------|------|-------------------|-------------------|
+| T2.4 | Implement follow-up generation & evaluation | 1. Follow-ups generate ✅ 2. Each follow-up evaluated by LLM ✅ 3. Box level updates after ALL follow-ups complete ✅ | PLANNING_AGENT_PROMPT.md lines 1047-1079 |
+```
+
+---
+
+## Enhanced Reviewer Responsibilities
+
+The Reviewer Agent MUST verify:
+
+1. **Code Quality** (original scope)
+   - Tests pass
+   - Type checks pass
+   - Clean code principles
+
+2. **Planning Compliance** (NEW - REQUIRED)
+   - Implementation matches PLANNING_AGENT_PROMPT.md behavior
+   - All acceptance criteria from ROADMAP.md are met
+   - Edge cases specified in planning are handled
+   - API contracts match API.md specification
+
+3. **Behavioral Verification** (NEW - REQUIRED)
+   - Manual test scenarios work as specified
+   - User flows match the planning document
+   - Business rules (Leitner, auth, etc.) are implemented correctly
+
+**Reviewer Checklist Before Approval:**
+- [ ] All tests pass
+- [ ] Type checks pass
+- [ ] Each task's acceptance criteria verified
+- [ ] Planning document requirements met
+- [ ] Manual test scenarios pass
+- [ ] No regression of existing features
 
 ---
 
@@ -375,6 +448,46 @@ See `API.md` for complete endpoint specification.
 ## Database Schema
 
 See `prisma/schema.prisma` for complete database schema.
+
+---
+
+## Supabase Connection
+
+### Connection String Format
+
+**CRITICAL:** Use the correct Supabase pooler connection format:
+
+```env
+# Connection Pooling (for app queries)
+DATABASE_URL="postgresql://postgres.{project_ref}:{PASSWORD_URL_ENCODED}@aws-1-{region}.pooler.supabase.com:6543/postgres?pgbouncer=true"
+
+# Direct connection (for migrations)
+DIRECT_URL="postgresql://postgres.{project_ref}:{PASSWORD_URL_ENCODED}@aws-1-{region}.pooler.supabase.com:5432/postgres"
+```
+
+**Key points:**
+- User format: `postgres.{project_ref}` (e.g., `postgres.yjxclueysajnxiyudwxn`)
+- Host: `aws-1-{region}.pooler.supabase.com` (NOT `db.{project_ref}.supabase.co`)
+- Password MUST be URL-encoded (e.g., `!` → `%21`)
+- Port 6543 for pooler, 5432 for direct
+- `pgbouncer=true` for pooler connection
+
+**Prisma schema must include both:**
+```prisma
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+```
+
+### Troubleshooting
+
+If `prisma db pull` fails:
+1. Verify hostname: `nslookup aws-1-eu-central-1.pooler.supabase.com`
+2. Check password is URL-encoded
+3. Ensure both DATABASE_URL and DIRECT_URL are set
+4. Get correct connection strings from: https://supabase.com/dashboard/project/{ref}/settings/database
 
 ---
 

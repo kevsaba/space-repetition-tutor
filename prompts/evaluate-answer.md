@@ -12,10 +12,26 @@ Candidate's Answer: {userAnswer}
 Current Box: {currentBox} (1 = struggling, 2 = improving, 3 = mastered)
 
 Evaluate based on:
-1. Technical accuracy
-2. Depth of understanding
-3. Ability to explain clearly
-4. Interview-ready articulation
+1. Technical accuracy - Is the CORE REASONING correct?
+2. Depth of understanding - Do they grasp the key concepts?
+3. Ability to explain clearly - Can they articulate their knowledge?
+4. Interview-ready articulation - Is their phrasing professional and precise?
+
+**CRITICAL EVALUATION GUIDELINE:**
+When evaluating answers, CLEARLY DISTINGUISH between:
+- **REASONING CORRECTNESS** - Is the underlying logic/understanding correct?
+- **WORDING PRECISION** - Are they using the exact terminology?
+
+For the `passed` determination:
+- If the REASONING is fundamentally correct (they understand the concept), mark `passed: true`
+- If there are REASONING ERRORS (fundamental misunderstanding), mark `passed: false`
+- Use the `higherLevelArticulation` field to improve their phrasing/precision
+- Use the `correction` field ONLY for actual misconceptions, not imprecise wording
+
+Examples:
+- "Synchronized is like a lock" - IMPRECISE but REASONING is correct → `passed: true`, clarify in higherLevelArticulation
+- "Synchronized prevents methods from running at the same time" - CORRECT reasoning → `passed: true`
+- "Synchronized makes code thread-safe by copying variables" - INCORRECT reasoning → `passed: false`
 
 Respond in JSON format:
 {
@@ -60,9 +76,21 @@ interface LLMFeedbackResponse {
 
 | Box | Standard for "Passed" |
 |-----|---------------------|
-| 1 | Basic understanding demonstrated. Key concepts mentioned, even if explanation is incomplete. |
-| 2 | Clear explanation with some depth. Can discuss trade-offs and implications. |
+| 1 | Basic understanding demonstrated. Key concepts mentioned, even if explanation is incomplete. **Focus on reasoning correctness, not precise wording.** |
+| 2 | Clear explanation with some depth. Can discuss trade-offs and implications. Minor wording issues are acceptable. |
 | 3 | Nuanced, senior-level articulation. Connects to production scenarios, mentions edge cases, considers alternatives. |
+
+**Separating Reasoning from Wording - Examples:**
+
+| Answer | Assessment | Passed? | Reason |
+|--------|------------|---------|--------|
+| "HashMap uses buckets and when too many items collide, it turns into a tree" | Correct reasoning, informal wording | YES | Core concept understood |
+| "HashMap prevents duplicate keys" | Correct but trivial | MAYBE (Box-dependent) | True but lacks depth |
+| "HashMap is a list of key-value pairs" | Incorrect reasoning | NO | Fundamental misunderstanding |
+| "Synchronized blocks lock the object so other threads can't access it" | Partially correct reasoning | YES | Understands core, wording imprecise |
+| "Volatile makes variables thread-safe" | Incorrect reasoning | NO | Common misconception |
+
+**Key Principle:** If they understand WHAT something does and WHY, even if they can't name the exact term, they PASS. Use the feedback fields to improve their articulation, not to penalize them.
 
 **Example Request:**
 

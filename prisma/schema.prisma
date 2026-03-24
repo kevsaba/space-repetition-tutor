@@ -7,8 +7,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================================
@@ -115,6 +116,10 @@ model Answer {
   passed      Boolean
   feedback    Json     // Structured feedback from LLM
   answeredAt  DateTime @default(now())
+
+  // Follow-up tracking
+  isFollowUp     Boolean @default(false) // Whether this is a follow-up answer
+  followUpQuestion String? // The follow-up question text (if this is a follow-up answer)
 
   // Session tracking (optional, for analytics)
   sessionId String?

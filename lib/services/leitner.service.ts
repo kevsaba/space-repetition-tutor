@@ -61,12 +61,33 @@ export function shouldPromote(currentBox: number, passed: boolean): boolean {
 }
 
 /**
+ * Calculate the final box based on multiple answer results (original + follow-ups).
+ *
+ * Rules:
+ * - ALL passed → Promote to next box (max 3)
+ * - ANY failed → Reset to Box 1
+ *
+ * @param currentBox - Current box level (1, 2, or 3)
+ * @param allPassed - Whether ALL answers (original + follow-ups) passed
+ * @returns New box level (1, 2, or 3)
+ */
+export function calculateFinalBox(currentBox: number, allPassed: boolean): number {
+  if (allPassed) {
+    // Promote to next box, max is 3
+    return Math.min(currentBox + 1, 3);
+  }
+  // Any failure resets to Box 1
+  return 1;
+}
+
+/**
  * LeitnerService interface for dependency injection
  */
 export const LeitnerService = {
   calculateNewBox,
   calculateNextDueDate,
   shouldPromote,
+  calculateFinalBox,
 } as const;
 
 export type LeitnerService = typeof LeitnerService;

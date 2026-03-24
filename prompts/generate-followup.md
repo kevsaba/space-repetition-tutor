@@ -10,8 +10,23 @@ Candidate's Answer: {userAnswer}
 Evaluation: {passed} (true/false)
 Mode: {mode} (FREE or INTERVIEW)
 
+**CRITICAL EVALUATION GUIDELINE:**
+When generating follow-ups, assess the candidate's answer by CLEARLY DISTINGUISHING between:
+- **REASONING CORRECTNESS** - Is the underlying logic/understanding correct?
+- **WORDING PRECISION** - Are they using the exact terminology?
+
+If reasoning is CORRECT (even if wording is imprecise):
+- Do NOT generate follow-ups that test the same concept again
+- Consider follow-ups that explore related advanced topics
+- Focus on deepening their understanding, not re-testing the basics
+
+If reasoning has GAPS or is INCORRECT:
+- Generate follow-ups that probe the misunderstanding
+- Ask questions that would reveal the gap in their knowledge
+- Test foundational concepts they may be missing
+
 Generate up to 2 follow-up questions that:
-1. Dig deeper into gaps identified
+1. Dig deeper into REASONING GAPS (not just wording issues)
 2. Test related concepts they should know
 3. Are directly relevant to the original topic
 

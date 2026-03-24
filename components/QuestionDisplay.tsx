@@ -43,7 +43,7 @@ export function QuestionDisplay({ question }: QuestionDisplayProps) {
       case 3:
         return 'Box 3 - Review weekly';
       default:
-        return 'Box unknown';
+        return 'To be determined';
     }
   };
 

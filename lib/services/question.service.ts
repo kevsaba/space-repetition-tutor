@@ -2,14 +2,15 @@
  * QuestionService - Fetch Due Questions
  *
  * Fetches due questions for a user, prioritizing Box 1 → Box 2 → Box 3.
- * If not enough due questions, creates new questions from template pool.
- *
- * For Phase 1 (before LLM integration), uses seed data from database.
+ * If not enough due questions, generates new questions via LLM.
  */
 
 import { prisma } from '../prisma';
 import { LeitnerService } from './leitner.service';
+import { llmService } from './llm';
+import { LLMError } from './llm/errors';
 import type { Question, UserQuestion, Topic } from '@prisma/client';
+import type { QuestionDifficulty, QuestionType } from './llm/types';
 
 /**
  * Due question with additional metadata
@@ -133,10 +134,10 @@ export async function fetchDueQuestions(
 }
 
 /**
- * Fetch new template questions that the user hasn't seen yet.
+ * Fetch new questions for a user.
  *
- * For Phase 1: Fetches template questions from database.
- * For Phase 2: Will use LLM to generate new questions.
+ * First tries to get template questions from database.
+ * If not enough, generates new questions via LLM.
  *
  * @param userId - User ID
  * @param limit - Number of questions to fetch
@@ -154,8 +155,8 @@ async function fetchNewQuestions(
     })
   ).map((uq) => uq.questionId);
 
-  // Fetch template questions the user hasn't seen
-  const newQuestions = await prisma.question.findMany({
+  // First try: Fetch template questions the user hasn't seen
+  const templateQuestions = await prisma.question.findMany({
     where: {
       isTemplate: true,
       id: { notIn: seenQuestionIds },
@@ -163,9 +164,161 @@ async function fetchNewQuestions(
     take: limit,
   });
 
-  // If no template questions available, we'll need LLM generation (Phase 2)
-  // For now, return empty array
-  return newQuestions;
+  // If we have enough template questions, return them
+  if (templateQuestions.length >= limit) {
+    return templateQuestions;
+  }
+
+  // Not enough templates? Generate new questions via LLM
+  const remaining = limit - templateQuestions.length;
+  const generatedQuestions = await generateQuestionsWithLLM(userId, remaining);
+
+  return [...templateQuestions, ...generatedQuestions];
+}
+
+/**
+ * Generate new questions using LLM.
+ *
+ * @param userId - User ID
+ * @param count - Number of questions to generate
+ * @returns Generated questions
+ */
+async function generateQuestionsWithLLM(
+  userId: string,
+  count: number,
+): Promise<Question[]> {
+  try {
+    // Get user's focus topics (or use default topics)
+    const topics = await getUserFocusTopics(userId);
+
+    // Generate questions for each topic until we have enough
+    const generatedQuestions: Question[] = [];
+    const topicCount = Math.ceil(count / Math.max(1, topics.length));
+
+    for (const topic of topics) {
+      if (generatedQuestions.length >= count) break;
+
+      try {
+        const response = await llmService.generateQuestions({
+          topic: topic.name,
+          difficulty: topic.difficulty as QuestionDifficulty,
+          type: 'CONCEPTUAL' as QuestionType,
+          count: Math.min(topicCount, count - generatedQuestions.length),
+        });
+
+        // Store generated questions as templates in database
+        for (const q of response.questions) {
+          // Find or create topic
+          let topicRecord = await prisma.topic.findUnique({
+            where: { name: topic.name },
+          });
+
+          if (!topicRecord) {
+            topicRecord = await prisma.topic.create({
+              data: {
+                name: topic.name,
+                category: topic.category,
+                track: topic.track as 'JAVA' | 'PYTHON' | 'DISTRIBUTED_SYSTEMS' | 'GENERAL',
+                difficulty: topic.difficulty as 'JUNIOR' | 'MID' | 'SENIOR',
+                isTemplate: true,
+              },
+            });
+          }
+
+          // Create question
+          const question = await prisma.question.create({
+            data: {
+              content: q.content,
+              type: q.type,
+              difficulty: q.difficulty,
+              topicId: topicRecord.id,
+              isTemplate: true,
+              createdBy: userId,
+              expectedTopics: q.expectedTopics,
+              hint: q.hint,
+            },
+          });
+
+          generatedQuestions.push(question);
+        }
+      } catch (error) {
+        // Log error but continue with other topics
+        console.error(`Failed to generate questions for topic ${topic.name}:`, error);
+      }
+    }
+
+    if (generatedQuestions.length === 0) {
+      console.warn('No questions were generated from LLM. This may be due to:');
+      console.warn('  1. No topics configured for the user');
+      console.warn('  2. LLM API authentication issues (check LLM_API_KEY)');
+      console.warn('  3. LLM API connectivity issues (check LLM_URL)');
+      console.warn('  4. LLM service unavailable or rate limiting');
+    }
+
+    return generatedQuestions;
+  } catch (error) {
+    // If LLM generation fails, log and return empty array
+    // (fall back to template questions only)
+    if (error instanceof LLMError) {
+      console.error('LLM question generation failed:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      });
+    } else {
+      console.error('Unexpected error during question generation:', error);
+    }
+    return [];
+  }
+}
+
+/**
+ * Get user's focus topics for question generation.
+ *
+ * @param userId - User ID
+ * @returns Focus topics
+ */
+async function getUserFocusTopics(
+  userId: string,
+): Promise<Array<{ name: string; category: string; track: string; difficulty: string }>> {
+  // Try to get topics from user's active career track
+  const userCareer = await prisma.userCareer.findFirst({
+    where: {
+      userId,
+      isActive: true,
+    },
+    include: {
+      career: {
+        include: {
+          careerTopics: {
+            include: {
+              topic: true,
+            },
+            orderBy: {
+              order: 'asc',
+            },
+            take: 3, // Focus on first 3 topics
+          },
+        },
+      },
+    },
+  });
+
+  if (userCareer) {
+    return userCareer.career.careerTopics.map((ct) => ({
+      name: ct.topic.name,
+      category: ct.topic.category,
+      track: ct.topic.track,
+      difficulty: ct.topic.difficulty,
+    }));
+  }
+
+  // Default topics if no career track
+  return [
+    { name: 'Java Concurrency', category: 'Backend', track: 'JAVA', difficulty: 'MID' },
+    { name: 'REST API Design', category: 'Backend', track: 'GENERAL', difficulty: 'MID' },
+    { name: 'Database Design', category: 'Database', track: 'GENERAL', difficulty: 'MID' },
+  ];
 }
 
 /**
@@ -197,7 +350,7 @@ async function hasMoreNewQuestions(userId: string): Promise<boolean> {
  */
 function mapToDueQuestions(userQuestions: Array<UserQuestion & { question: Question & { topic: Topic } }>): DueQuestion[] {
   return userQuestions.map((uq) => ({
-    id: uq.question.id,
+    id: uq.id, // UserQuestion ID - needed for answer submission
     content: uq.question.content,
     topic: {
       id: uq.question.topic.id,
