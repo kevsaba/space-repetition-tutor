@@ -262,6 +262,28 @@ When an agent approaches context limit (80% threshold):
 
 ---
 
+## CRITICAL: MILESTONE COMPLETION CHECKLIST
+
+**SUPERVISOR MUST COMPLETE THIS CHECKLIST BEFORE REQUESTING USER APPROVAL:**
+
+- [ ] **Backend Agent completed all tasks** (verified by task outputs)
+- [ ] **Frontend Agent completed all tasks** (verified by task outputs)
+- [ ] **Reviewer Agent spawned and completed verification**
+- [ ] **Reviewer approved code quality** (tests pass, type checks pass)
+- [ ] **Reviewer approved planning compliance** (implementation matches PLANNING_AGENT_PROMPT.md)
+- [ ] **Reviewer approved behavioral requirements** (manual test scenarios pass)
+- [ ] **All acceptance criteria met** (from ROADMAP.md task definitions)
+- [ ] **No regressions** (existing functionality still works)
+- [ ] **Build succeeds** (npm run build completes without errors)
+
+**ONLY WHEN ALL ITEMS ABOVE ARE CHECKED:**
+- THEN request USER APPROVAL for testing
+- NEVER ask user to test before Reviewer approval
+
+**VIOLATION OF THIS RULE IS A CRITICAL FAILURE.**
+
+---
+
 ## Self-Healing Rules
 
 **If ANY agent violates these rules, Supervisor MUST:**
@@ -349,16 +371,17 @@ Every feature MUST include:
 
 ## Critical Rules Summary
 
-1. **NEVER merge to main without user approval**
-2. **NEVER let LLM decide Leitner box transitions**
-3. **NEVER put business logic in controllers**
-4. **NEVER skip tests**
-5. **ALWAYS use type safety (no `any` escapes)**
-6. **ALWAYS handle context limits with handoffs**
-7. **ALWAYS work on feature branches, never main**
-8. **ALWAYS document violations in CLAUDE.md**
-9. **ALWAYS include acceptance criteria for every task** (prevents missing features)
-10. **REVIEWER MUST verify implementation against PLANNING_AGENT_PROMPT.md** (not just code quality)
+1. **🚨 NEVER SKIP THE REVIEWER AGENT** - Milestone is NOT complete until Reviewer approves (see checklist below)
+2. **NEVER merge to main without user approval**
+3. **NEVER let LLM decide Leitner box transitions**
+4. **NEVER put business logic in controllers**
+5. **NEVER skip tests**
+6. **ALWAYS use type safety (no `any` escapes)**
+7. **ALWAYS handle context limits with handoffs**
+8. **ALWAYS work on feature branches, never main**
+9. **ALWAYS document violations in CLAUDE.md**
+10. **ALWAYS include acceptance criteria for every task** (prevents missing features)
+11. **REVIEWER MUST verify implementation against PLANNING_AGENT_PROMPT.md** (not just code quality)
 
 ---
 
@@ -381,6 +404,23 @@ Every feature MUST include:
 - New process rules added below to prevent recurrence
 
 **Rule update:** Added "Task Definition Requirements" and enhanced "Reviewer Responsibilities" sections below.
+
+### 2025-03-24 - SKIPPED REVIEWER AGENT (CRITICAL VIOLATION)
+
+**What happened:** Supervisor declared Phase 3 complete WITHOUT spawning Reviewer agent for verification.
+
+**Why it was wrong:**
+- Planning document workflow: "AGENTS: Complete tasks → REVIEWER: Verify all tasks → SUPERVISOR: REQUEST USER APPROVAL"
+- Reviewer is the GATEKEEPER - no milestone is complete without explicit approval
+- User was asked to test before Reviewer verification - backwards workflow
+- Planning document explicitly states: "REVIEWER agent reviews and approves" before user approval
+
+**How it was fixed:**
+- User caught the violation before testing
+- Supervisor forced to follow proper workflow
+- New "MILESTONE COMPLETION CHECKLIST" added below
+
+**Rule update:** See "CRITICAL: MILESTONE COMPLETION CHECKLIST" below - this MUST be followed EVERY TIME, NO EXCEPTIONS.
 
 ---
 
