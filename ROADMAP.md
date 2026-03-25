@@ -226,7 +226,80 @@ This roadmap breaks down the implementation of the Space Repetition Tutor into p
 
 ---
 
-## Phase 5: Future Features (Out of Scope for v1)
+## Phase 5: CSV/Excel Upload & Manual Question Entry
+
+**Goal:** Allow users to upload questions via CSV/Excel files and manually add questions to existing careers
+
+**Note:** PDF upload will be deprecated in favor of CSV/Excel which provides cleaner parsing and better error handling.
+
+### Backend Tasks
+
+| Task ID | Task | Agent | Dependencies |
+|---------|------|-------|--------------|
+| T5.1 | Create CSV parser service | Backend | None |
+| T5.2 | Create Excel parser service (xlsx library) | Backend | None |
+| T5.3 | Add API endpoint for CSV/Excel upload to create new career | Backend | T5.1, T5.2 |
+| T5.4 | Add API endpoint for CSV/Excel upload to existing career | Backend | T5.3 |
+| T5.5 | Add API endpoint for manual question creation | Backend | T5.3 |
+| T5.6 | Update career selection to handle additional question uploads | Backend | T5.4 |
+
+### Frontend Tasks
+
+| Task ID | Task | Agent | Dependencies |
+|---------|------|-------|--------------|
+| T5.7 | Update upload page to accept CSV/Excel files | Frontend | T5.1, T5.2 |
+| T5.8 | Add manual question entry form | Frontend | T5.5 |
+| T5.9 | Add "Add Questions" button for existing careers | Frontend | T5.6 |
+| T5.10 | Display validation errors for malformed uploads | Frontend | T5.7 |
+
+### Reviewer Tasks
+
+| Task ID | Task | Agent | Dependencies |
+|---------|------|-------|--------------|
+| T5.11 | Test CSV parsing with various formats | Reviewer | T5.1 |
+| T5.12 | Test Excel parsing with .xlsx files | Reviewer | T5.2 |
+| T5.13 | Test manual question creation and UserQuestion generation | Reviewer | T5.5 |
+| T5.14 | Test adding questions to existing careers | Reviewer | T5.4 |
+
+### Deliverables
+
+- CSV parser supporting format: `topic_name,question_text`
+- Excel parser supporting `.xlsx` files with same format
+- API endpoints:
+  - `POST /api/careers/upload-csv` - Create new career from CSV/Excel
+  - `POST /api/careers/:careerId/add-questions` - Add questions to existing career
+  - `POST /api/questions` - Manually create a question
+- UI for manual question entry
+- Validation and error messages for malformed files
+
+**Success Criteria:**
+- User can upload CSV file with format `topic_name,question_text`
+- User can upload Excel (.xlsx) file with same format
+- System correctly parses topics and creates questions
+- User can manually add questions to existing careers
+- User can upload additional questions to careers they created
+- Clear error messages for malformed files
+- All uploaded questions create UserQuestion records immediately
+
+**File Format Specification:**
+
+```
+Topic Name,Question Text
+Java Concurrency,Explain the difference between synchronized blocks and ReentrantLock
+Java Collections,How does HashMap handle collisions?
+REST API Design,What are idempotent HTTP methods?
+```
+
+Or comma-separated:
+```
+Java Concurrency,Explain the difference between synchronized blocks and ReentrantLock
+Java Collections,How does HashMap handle collisions?
+REST API Design,What are idempotent HTTP methods?
+```
+
+---
+
+## Phase 6: Future Features (Out of Scope for v1)
 
 These features are planned for future versions and are NOT part of v1 MVP:
 
@@ -239,6 +312,7 @@ These features are planned for future versions and are NOT part of v1 MVP:
 - [ ] Spaced repetition analytics (retention curves, optimal intervals)
 - [ ] Voice input for answers
 - [ ] Image/diagram support in questions
+- [ ] PDF upload (deprecated - use CSV/Excel instead)
 
 ---
 
@@ -252,6 +326,8 @@ Phase 2 (LLM Integration) ← depends on Phase 1
 Phase 3 (Interview Mode) ← depends on Phase 1, Phase 2
     ↓
 Phase 4 (Polish & Dashboard) ← depends on Phase 1, Phase 2, Phase 3
+    ↓
+Phase 5 (CSV/Excel Upload) ← depends on Phase 1, Phase 3
 ```
 
 **Parallel Work Opportunities:**
@@ -259,6 +335,7 @@ Phase 4 (Polish & Dashboard) ← depends on Phase 1, Phase 2, Phase 3
 - Phase 1: Backend (T1.1-T1.7) and Frontend (T1.8-T1.12) can be done in parallel
 - Phase 2: Backend (T2.1-T2.7) and Frontend (T2.8-T2.10) can be partially parallel
 - Phase 3: Backend (T3.1-T3.6) and Frontend (T3.7-T3.9) can be partially parallel
+- Phase 5: Backend (T5.1-T5.6) and Frontend (T5.7-T5.10) can be partially parallel
 
 ---
 
@@ -270,7 +347,8 @@ Phase 4 (Polish & Dashboard) ← depends on Phase 1, Phase 2, Phase 3
 | Phase 2 | 7 | 3 | 0 | 3 | 13 |
 | Phase 3 | 6 | 4 | 0 | 3 | 13 |
 | Phase 4 | 3 | 3 | 0 | 2 | 8 |
-| **Total** | **23** | **15** | **1** | **12** | **51** |
+| Phase 5 | 6 | 4 | 0 | 4 | 14 |
+| **Total** | **29** | **19** | **1** | **16** | **65** |
 
 ---
 
@@ -281,6 +359,7 @@ Phase 4 (Polish & Dashboard) ← depends on Phase 1, Phase 2, Phase 3
 - **Test coverage is mandatory** - Every feature must have tests
 - **User approval gates** - Each phase requires explicit user approval before proceeding
 - **Context window management** - Agents should hand off when approaching token limits
+- **CSV/Excel over PDF** - Phase 5 replaces PDF upload with more reliable CSV/Excel parsing
 
 ---
 

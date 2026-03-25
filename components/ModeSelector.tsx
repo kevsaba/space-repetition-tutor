@@ -44,13 +44,13 @@ export function ModeSelector({
 
   return (
     <div className={`inline-flex items-center bg-gray-100 rounded-lg p-1 ${className}`}>
-      {/* FREE Mode - Green when active */}
+      {/* FREE Mode - Purple when active */}
       <button
         onClick={() => handleModeChange('FREE')}
         disabled={disabled}
         className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
           mode === 'FREE'
-            ? 'bg-emerald-500 text-white shadow-sm'
+            ? 'bg-violet-600 text-white shadow-sm'
             : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200/50'
         } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
