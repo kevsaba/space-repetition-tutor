@@ -10,8 +10,6 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-  // Use webpack explicitly instead of Turbopack for compatibility
-  experimental: {},
 };
 
 export default nextConfig;

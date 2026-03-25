@@ -14,6 +14,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { QuestionDisplay } from '@/components/QuestionDisplay';
 import { AnswerInput } from '@/components/AnswerInput';
 import { FeedbackDisplay } from '@/components/FeedbackDisplay';
@@ -444,6 +445,12 @@ export default function StudyPage() {
               <p className="text-sm text-gray-600">Welcome, {user.username}</p>
             </div>
             <div className="flex items-center gap-3">
+              <Link
+                href="/dashboard"
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Dashboard
+              </Link>
               <ModeSelector
                 currentMode={studyMode}
                 onModeChange={handleModeChange}

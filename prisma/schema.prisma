@@ -79,6 +79,8 @@ model UserQuestion {
   @@unique([userId, questionId])
   @@index([userId, dueDate])
   @@index([dueDate])
+  @@index([userId, box])
+  @@index([userId, lastSeenAt])
   @@map("user_questions")
 }
 
