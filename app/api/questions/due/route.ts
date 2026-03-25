@@ -2,6 +2,11 @@
  * GET /api/questions/due
  *
  * Fetch due questions for the authenticated user.
+ *
+ * Query Parameters:
+ * - limit: Number of questions to return (default 5, max 20)
+ * - mode: Session mode (FREE or INTERVIEW, default FREE)
+ * - sessionId: Session ID for tracking (optional)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,6 +21,7 @@ export async function GET(request: NextRequest) {
     // Parse query parameters
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '5', 10);
+    const mode = (searchParams.get('mode') || 'FREE') as 'FREE' | 'INTERVIEW';
     const sessionId = searchParams.get('sessionId') || undefined;
 
     // Validate limit
@@ -26,8 +32,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Validate mode
+    if (mode !== 'FREE' && mode !== 'INTERVIEW') {
+      return NextResponse.json(
+        { error: { code: 'INVALID_INPUT', message: 'Mode must be FREE or INTERVIEW' } },
+        { status: 400 },
+      );
+    }
+
     // Fetch due questions
-    const result = await QuestionService.fetchDueQuestions(userId, sessionId, limit);
+    const result = await QuestionService.fetchDueQuestions(userId, mode, sessionId, limit);
 
     return NextResponse.json(result);
   } catch (error) {

@@ -3,7 +3,11 @@
 /**
  * Study Page - Main study flow
  *
- * Fetches due questions and handles the question -> answer -> feedback -> follow-ups -> complete flow.
+ * Supports both FREE and INTERVIEW modes:
+ * - FREE: Explore topics freely using Leitner system
+ * - INTERVIEW: Structured preparation following career track order
+ *
+ * Handles the question -> answer -> feedback -> follow-ups -> complete flow.
  * Follow-up answers are evaluated by the LLM and results affect the final box level.
  */
 
@@ -13,6 +17,9 @@ import { useRouter } from 'next/navigation';
 import { QuestionDisplay } from '@/components/QuestionDisplay';
 import { AnswerInput } from '@/components/AnswerInput';
 import { FeedbackDisplay } from '@/components/FeedbackDisplay';
+import { CareerSelector } from '@/components/CareerSelector';
+import { ModeSelector } from '@/components/ModeSelector';
+import { InterviewProgress, CompactProgress } from '@/components/InterviewProgress';
 
 interface Question {
   id: string;
@@ -64,9 +71,25 @@ type StudyState =
   | 'complete'
   | 'error';
 
+type StudyMode = 'FREE' | 'INTERVIEW';
+
 export default function StudyPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+
+  // Interview mode state
+  const [studyMode, setStudyMode] = useState<StudyMode>('FREE');
+  const [hasActiveCareer, setHasActiveCareer] = useState(false);
+  const [showCareerSelector, setShowCareerSelector] = useState(false);
+
+  // Interview progress state
+  const [interviewProgress, setInterviewProgress] = useState<{
+    currentTopicIndex: number;
+    totalTopics: number;
+    currentTopicName: string;
+    questionsAnswered: number;
+    questionsPerTopic: number;
+  } | null>(null);
 
   const [studyState, setStudyState] = useState<StudyState>('loading');
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
@@ -107,12 +130,66 @@ export default function StudyPage() {
     }
   }, [user]);
 
-  const fetchQuestions = async () => {
+  // Check if user has an active career for interview mode
+  // Only check on initial mount if in INTERVIEW mode, not on mode switch
+  useEffect(() => {
+    const checkActiveCareer = async () => {
+      try {
+        const response = await fetch('/api/careers/active');
+        if (response.ok) {
+          setHasActiveCareer(true);
+        }
+      } catch (err) {
+        setHasActiveCareer(false);
+      }
+    };
+    // Only check if in INTERVIEW mode to avoid unnecessary API calls
+    if (studyMode === 'INTERVIEW') {
+      checkActiveCareer();
+    }
+  }, []);
+
+  // Handle mode change
+  const handleModeChange = (newMode: StudyMode) => {
+    if (newMode === 'INTERVIEW' && !hasActiveCareer) {
+      setShowCareerSelector(true);
+      return;
+    }
+    setStudyMode(newMode);
+    // Reset session when changing modes
+    setSessionId(undefined);
+    setCurrentQuestion(null);
+    // In FREE mode, clear interview progress and career context
+    if (newMode === 'FREE') {
+      setInterviewProgress(null);
+      // Note: We keep hasActiveCareer as-is so user can switch back to INTERVIEW
+    }
+    fetchQuestions(newMode);
+  };
+
+  // Handle career selection
+  const handleCareerSelected = () => {
+    setHasActiveCareer(true);
+    setShowCareerSelector(false);
+    setStudyMode('INTERVIEW');
+    setSessionId(undefined);
+    setCurrentQuestion(null);
+    fetchQuestions('INTERVIEW');
+  };
+
+  const fetchQuestions = async (mode?: StudyMode) => {
     setStudyState('loading');
     setError('');
 
+    const actualMode = mode || studyMode;
+    const params = new URLSearchParams({
+      limit: '1',
+      sessionId: sessionId || '',
+      mode: actualMode,
+    });
+
     try {
-      const response = await fetch(`/api/questions/due?limit=1&sessionId=${sessionId || ''}`);
+      const response = await fetch(`/api/questions/due?${params.toString()}`);
       if (!response.ok) {
         throw new Error('Failed to fetch questions');
       }
@@ -125,6 +202,11 @@ export default function StudyPage() {
         setCurrentQuestion(data.questions[0]);
         setSessionId(data.sessionId);
         setStudyState('question');
+
+        // Update interview progress if provided
+        if (data.interviewProgress) {
+          setInterviewProgress(data.interviewProgress);
+        }
       }
       setRetryCount(0);
     } catch (err) {
@@ -146,7 +228,7 @@ export default function StudyPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           answer,
-          mode: 'FREE',
+          mode: studyMode,
           sessionId,
         }),
       });
@@ -350,23 +432,61 @@ export default function StudyPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">Space Repetition Tutor</h1>
-            <p className="text-sm text-gray-600">Welcome, {user.username}</p>
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-4xl mx-auto px-4 py-4 min-h-[72px]">
+          {/* Top row - Logo, Mode Selector, Career Selector, Logout */}
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Space Repetition Tutor</h1>
+              <p className="text-sm text-gray-600">Welcome, {user.username}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <ModeSelector
+                currentMode={studyMode}
+                onModeChange={handleModeChange}
+                hasActiveCareer={hasActiveCareer}
+              />
+              <CareerSelector
+                onCareerChange={handleCareerSelected}
+                studyMode={studyMode}
+                className={studyMode === 'INTERVIEW' ? 'ring-2 ring-indigo-200' : ''}
+              />
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Logout
-          </button>
+
+          {/* Progress row - Only show in INTERVIEW mode */}
+          <div className="min-h-[40px]">
+            {studyMode === 'INTERVIEW' && interviewProgress && (
+              <CompactProgress
+                currentTopicIndex={interviewProgress.currentTopicIndex}
+                totalTopics={interviewProgress.totalTopics}
+                currentTopicName={interviewProgress.currentTopicName}
+              />
+            )}
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="max-w-4xl mx-auto px-4 py-8">
+        {/* Interview Progress Card - Only show in INTERVIEW mode */}
+        {studyMode === 'INTERVIEW' && interviewProgress && (
+          <div className="mb-6">
+            <InterviewProgress
+              currentTopicIndex={interviewProgress.currentTopicIndex}
+              totalTopics={interviewProgress.totalTopics}
+              currentTopicName={interviewProgress.currentTopicName}
+              questionsAnswered={interviewProgress.questionsAnswered}
+              questionsPerTopic={interviewProgress.questionsPerTopic}
+            />
+          </div>
+        )}
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
             <p className="font-medium">Error</p>
@@ -647,6 +767,11 @@ export default function StudyPage() {
               <p className="text-sm text-indigo-700 mt-1">
                 Question {currentFollowUpIndex + 1} of {feedback.followUpQuestions.length}
               </p>
+              {studyMode === 'INTERVIEW' && (
+                <p className="text-xs text-indigo-600 mt-2 italic">
+                  Follow-ups are required in Interview Mode
+                </p>
+              )}
             </div>
 
             {/* Follow-up Question Display */}
@@ -655,6 +780,11 @@ export default function StudyPage() {
                 <span className="inline-block px-3 py-1 bg-indigo-100 text-indigo-800 text-xs font-medium rounded-full">
                   Follow-up
                 </span>
+                {studyMode === 'INTERVIEW' && (
+                  <span className="ml-2 inline-block px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">
+                    Required
+                  </span>
+                )}
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">
                 {feedback.followUpQuestions[currentFollowUpIndex].content}
@@ -697,13 +827,20 @@ export default function StudyPage() {
                   >
                     Submit Answer
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleSkipFollowUps}
-                    className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
-                  >
-                    Skip
-                  </button>
+                  {studyMode === 'FREE' && (
+                    <button
+                      type="button"
+                      onClick={handleSkipFollowUps}
+                      className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
+                    >
+                      Skip
+                    </button>
+                  )}
+                  {studyMode === 'INTERVIEW' && (
+                    <div className="px-6 py-3 bg-gray-100 text-gray-500 rounded-lg font-medium">
+                      Cannot skip in Interview Mode
+                    </div>
+                  )}
                 </div>
               </form>
             </div>
@@ -712,22 +849,78 @@ export default function StudyPage() {
 
         {studyState === 'complete' && (
           <div className="bg-white rounded-lg shadow-md p-12 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">All caught up!</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              {studyMode === 'INTERVIEW' ? 'Interview Session Complete!' : 'Ready to Start Practicing!'}
+            </h2>
             <p className="text-gray-600 mb-6">
-              You&apos;ve reviewed all your due questions. Come back later for more practice.
+              {studyMode === 'INTERVIEW'
+                ? 'You have completed the available questions for this session. Great progress!'
+                : 'No questions due right now. Start a new session to generate fresh questions via AI!'}
             </p>
-            <button
-              onClick={() => router.push('/')}
-              className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
-            >
-              Back to Home
-            </button>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => {
+                  setStudyState('loading');
+                  // This will trigger LLM question generation
+                  fetchQuestions();
+                }}
+                className="px-8 py-4 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors"
+              >
+                Start Practicing
+              </button>
+              <button
+                onClick={() => router.push('/')}
+                className="px-8 py-4 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
+              >
+                Back to Home
+              </button>
+            </div>
           </div>
+        )}
+
+        {/* Career Selection Modal */}
+        {showCareerSelector && (
+          <>
+            <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowCareerSelector(false)} />
+            <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white rounded-lg shadow-xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                  <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">Select a Career Track</h3>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Interview mode requires you to select a career track. This allows us to guide you through topics in a structured order for your target role.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowCareerSelector(false);
+                    setStudyMode('FREE');
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                >
+                  Back to Free Mode
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCareerSelector(false);
+                    // The CareerSelector in header will handle selection
+                  }}
+                  className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+                >
+                  Select Career
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </main>
     </div>

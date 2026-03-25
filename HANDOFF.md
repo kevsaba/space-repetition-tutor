@@ -1,162 +1,101 @@
-# Supervisor Handoff: Phase 2 → Phase 3
+# Agent Handoff: PDF Upload Bug Fix
 
-**Date:** 2025-03-24
-**From:** Supervisor Agent (Phase 2 completion)
-**To:** Fresh Supervisor Agent (Phase 3)
-**Reason:** Context window management - starting fresh for Phase 3
-
----
-
-## Current State
-
-### Completed Milestones
-
-| Phase | Status | Commit |
-|-------|--------|--------|
-| Phase 1: Foundation | ✅ Complete | `53f7be8` |
-| Phase 2: LLM Integration | ✅ Complete | `f8edd32` |
-
-### Current Branch
-
-- **Main branch:** `main` - Contains Phase 1 + Phase 2 merged
-- **All changes pushed to:** `github.com:kevsaba/space-repetition-tutor.git`
+**Date:** 2025-03-25
+**From:** Previous Agent (context limit) → Current Agent
+**Status:** Bug fixed, awaiting user testing
 
 ---
 
-## Phase 3: Interview Mode
+## Bug Fixed: PDF Upload Error
 
-### Goal
+### Original Issue
+POST `/api/careers/upload` returned 400 error:
+```json
+{
+  "error": {
+    "code": "CAREER_CREATE_FAILED",
+    "message": "Failed to create career from uploaded file"
+  }
+}
+```
 
-Implement structured interview preparation with career tracks and ordered topic progression.
+### Root Cause
+In `lib/services/career.service.ts`, the `createFromUpload()` function used `prisma.userCareer.create()` to create a UserCareer assignment. However, if the user already had this career (even if inactive), the unique constraint `@@unique([userId, careerId])` would cause the operation to fail.
 
-### Key Requirements (from ROADMAP.md)
+### Fix Applied
+Changed `prisma.userCareer.create()` to `prisma.userCareer.upsert()` to handle the case where a UserCareer already exists but was deactivated.
 
-**Backend Tasks:**
-| Task ID | Task | Dependencies |
-|---------|------|--------------|
-| T3.1 | Create Career and CareerTopic models | None |
-| T3.2 | Implement career track seed data | T3.1 |
-| T3.3 | Create session management (FREE vs INTERVIEW) | T3.1 |
-| T3.4 | Implement interview question orchestration | T3.3 |
-| T3.5 | Add API routes for career management | T3.2 |
-| T3.6 | Add API routes for interview sessions | T3.4 |
+**File:** `/Users/kevin.sabatino/space-repetition-tutor/lib/services/career.service.ts`
 
-**Frontend Tasks:**
-| Task ID | Task | Dependencies |
-|---------|------|--------------|
-| T3.7 | Create career selection UI | T3.2 |
-| T3.8 | Create interview session UI | T3.4 |
-| T3.9 | Add interview progress tracking | T3.8 |
-| T3.10 | Implement follow-up flow for interview mode | T2.10 |
+**Before (lines 364-371):**
+```typescript
+await prisma.userCareer.create({
+  data: {
+    userId,
+    careerId: career.id,
+    isActive: true,
+  },
+});
+```
 
-**Reviewer Tasks:**
-| Task ID | Task | Dependencies |
-|---------|------|--------------|
-| T3.11 | Test career track assignment | T3.2 |
-| T3.12 | Test interview session flow | T3.4 |
-| T3.13 | Test follow-up relevance in interview mode | T3.10 |
+**After:**
+```typescript
+await prisma.userCareer.upsert({
+  where: {
+    userId_careerId: {
+      userId,
+      careerId: career.id,
+    },
+  },
+  update: {
+    isActive: true,
+    startedAt: new Date(), // Reset start date when reactivating
+  },
+  create: {
+    userId,
+    careerId: career.id,
+    isActive: true,
+  },
+});
+```
 
----
+### Additional Improvements
+1. **Enhanced error logging** - Added detailed error logging in `createFromUpload()` to help diagnose future issues
+2. **API route logging** - Added console.log statements in the upload route for debugging
 
-## Important Context
-
-### Database Schema Already Exists
-
-The `Career` and `CareerTopic` models are already defined in `prisma/schema.prisma`:
-- `Career` (id, name, description)
-- `CareerTopic` (links careers to topics with order)
-- `UserCareer` (user's active career track)
-
-### Session Model Already Exists
-
-The `Session` model is already defined with:
-- `mode`: FREE or INTERVIEW
-- `status`: IN_PROGRESS, COMPLETED, ABANDONED
-- `careerId`: for interview mode sessions
-
-### LLM Integration Complete
-
-LLM service is fully functional:
-- `llmService.evaluateAnswer()` - for original questions
-- `llmService.evaluateFollowUp()` - for follow-ups
-- `llmService.generateQuestions()` - for new questions
-- `llmService.generateFollowUp()` - for follow-up generation
-
-API endpoint: `https://aikeys.maibornwolff.de/v1`
-Model: `gpt-4o-mini`
-Header: `x-litellm-api-key`
-
----
-
-## Acceptance Criteria for Phase 3
-
-Each task MUST include:
-
-1. **Acceptance Criteria** (testable "Definition of Done")
-2. **Reference to PLANNING_AGENT_PROMPT.md** section
-3. **Manual test scenario**
+### Testing Required
+1. Go to http://localhost:3000/upload (login first)
+2. Upload a PDF with topics and questions
+3. Verify the career is created successfully
 
 ---
 
-## Process Rules (CRITICAL)
+## ARCHIVE: Previous Handoff Content
 
-### 1. Task Definition
-- EVERY task must have unambiguous name
-- EVERY task must have acceptance criteria
-- EVERY task must reference planning document
+*(Previous handoff content preserved for reference)*
 
-### 2. Reviewer Responsibilities
-- Check code quality ✅
-- **Check planning compliance** ✅ NEW
-- **Verify behavioral requirements** ✅ NEW
+**Date:** 2025-03-25
+**From:** Opus Agent (context limit approaching)
+**To:** Fresh Agent (continue PDF upload bug fix)
+**Reason:** Context limit - user requested handoff
 
-### 3. Context Handoff
-- If approaching 80% context → write HANDOFF.md
-- Spawn fresh agent of same type
-- Self-terminate
-
----
-
-## Files to Read First
-
-1. `/Users/kevin.sabatino/space-repetition-tutor/ROADMAP.md` - Phase 3 tasks
-2. `/Users/kevin.sabatino/space-repetition-tutor/PLANNING_AGENT_PROMPT.md` - Full spec
-3. `/Users/kevin.sabatino/space-repetition-tutor/CLAUDE.md` - Process rules
-4. `/Users/kevin.sabatino/space-repetition-tutor/prisma/schema.prisma` - Data model
-5. `/Users/kevin.sabatino/space-repetition-tutor/API.md` - API spec
+### Recent Fixes Applied (Before Today)
+| File | Change |
+|------|--------|
+| `app/api/careers/upload/route.ts` | Fixed response: added `careerName` and `topics` |
+| `components/PDFUploader.tsx` | Added defensive check: `success.topics && success.topics.length` |
+| `app/study/page.tsx` | Fixed malformed SVG path at line 854 |
 
 ---
 
-## What NOT to Do
-
-- ❌ Don't re-implement Phase 1 or 2 features
-- ❌ Don't break backward compatibility with FREE mode
-- ❌ Don't skip acceptance criteria for tasks
-- ❌ Don't let LLM decide Leitner transitions (still deterministic)
-- ❌ Don't merge to main without user approval
+## Environment
+- Server: http://localhost:3000 (currently running)
+- Test at: http://localhost:3000/upload (requires login first)
 
 ---
 
-## Next Steps for New Supervisor
-
-1. Read the planning documents (above list)
-2. Announce "🎯 STARTING MILESTONE: Phase 3 - Interview Mode"
-3. Break down Phase 3 tasks with acceptance criteria
-4. Spawn Backend + Frontend agents in parallel
-5. Monitor progress and handle context handoffs
-6. After Reviewer approval → Request USER approval
-7. Cleanup and proceed to Phase 4
-
----
-
-## Violation Log
-
-### 2025-03-24 - Missing Feature Implementation (Follow-up Evaluation)
-**Issue:** Follow-up evaluation specified in planning doc but not implemented
-**Fix:** Implemented in Phase 2
-**Rule Update:** Added "Task Definition Requirements" and "Enhanced Reviewer Responsibilities" to CLAUDE.md
-
----
-
-**Status:** Ready for Phase 3 to begin.
-**Self-terminating now.**
+## Status
+✅ Bug fixed with upsert
+✅ Build succeeds
+✅ Type checks pass
+⏳ Awaiting user testing

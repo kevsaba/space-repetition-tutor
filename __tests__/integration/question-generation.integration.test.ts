@@ -28,7 +28,7 @@ describe('Question Generation Integration', () => {
   });
 
   it('should fetch template questions when no due questions exist', async () => {
-    const result = await QuestionService.fetchDueQuestions(testUserId, undefined, 5);
+    const result = await QuestionService.fetchDueQuestions(testUserId, 'FREE', undefined, 5);
 
     expect(result.questions).toBeDefined();
     expect(result.questions.length).toBeGreaterThan(0);
@@ -46,7 +46,7 @@ describe('Question Generation Integration', () => {
 
   it('should create UserQuestion records for new questions', async () => {
     // First call should create UserQuestion records
-    const result1 = await QuestionService.fetchDueQuestions(testUserId, undefined, 3);
+    const result1 = await QuestionService.fetchDueQuestions(testUserId, 'FREE', undefined, 3);
     expect(result1.questions.length).toBeGreaterThan(0);
 
     // Verify UserQuestion records were created
@@ -63,7 +63,7 @@ describe('Question Generation Integration', () => {
   });
 
   it('should return hasNewQuestionsAvailable correctly', async () => {
-    const result = await QuestionService.fetchDueQuestions(testUserId, undefined, 100);
+    const result = await QuestionService.fetchDueQuestions(testUserId, 'FREE', undefined, 100);
 
     // hasNewQuestionsAvailable should indicate if more templates exist
     expect(typeof result.hasNewQuestionsAvailable).toBe('boolean');

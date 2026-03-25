@@ -1,7 +1,11 @@
 /**
  * QuestionService - Fetch Due Questions
  *
- * Fetches due questions for a user, prioritizing Box 1 → Box 2 → Box 3.
+ * Fetches due questions for a user with two modes:
+ *
+ * FREE mode: Prioritizes Box 1 → Box 2 → Box 3 (Leitner system)
+ * INTERVIEW mode: Follows CareerTopic order for structured interview preparation
+ *
  * If not enough due questions, generates new questions via LLM.
  */
 
@@ -10,7 +14,7 @@ import { LeitnerService } from './leitner.service';
 import { llmService } from './llm';
 import { LLMError } from './llm/errors';
 import type { Question, UserQuestion, Topic } from '@prisma/client';
-import type { QuestionDifficulty, QuestionType } from './llm/types';
+import type { QuestionDifficulty, QuestionType, SessionMode } from './llm/types';
 
 /**
  * Due question with additional metadata
@@ -32,18 +36,32 @@ export interface DueQuestion {
 }
 
 /**
+ * Interview progress for INTERVIEW mode
+ */
+export interface InterviewProgress {
+  currentTopicIndex: number;
+  totalTopics: number;
+  currentTopicName: string;
+  questionsAnswered: number;
+  questionsPerTopic: number;
+}
+
+/**
  * Fetch due questions output
  */
 export interface FetchDueQuestionsOutput {
   questions: DueQuestion[];
   hasNewQuestionsAvailable: boolean;
   sessionId?: string;
+  interviewProgress?: InterviewProgress; // Progress tracking for INTERVIEW mode
 }
 
 /**
  * Fetch due questions for a user.
  *
  * Algorithm:
+ *
+ * FREE mode (Leitner priority):
  * 1. Fetch UserQuestions where dueDate <= now() and userId = userId
  * 2. Order by: box ASC, dueDate ASC, lastSeenAt ASC
  * 3. Take limit (default 5)
@@ -51,15 +69,41 @@ export interface FetchDueQuestionsOutput {
  * 5. Create UserQuestion entries for new questions (Box 1, due now)
  * 6. Return questions + whether more are available
  *
+ * INTERVIEW mode (CareerTopic order):
+ * 1. Get user's active career track
+ * 2. Fetch questions in CareerTopic order
+ * 3. Focus on current topic (first N with due questions)
+ * 4. Generate new questions for current topic if needed
+ * 5. Return questions + topic progress
+ *
  * @param userId - User ID
+ * @param mode - Session mode (FREE or INTERVIEW)
  * @param sessionId - Session ID (for tracking)
  * @param limit - Number of questions to return (default 5)
  * @returns Due questions and availability flag
  */
 export async function fetchDueQuestions(
   userId: string,
+  mode: SessionMode = 'FREE',
   sessionId?: string,
   limit: number = 5,
+): Promise<FetchDueQuestionsOutput> {
+  // INTERVIEW mode: Follow career topic order
+  if (mode === 'INTERVIEW') {
+    return fetchInterviewModeQuestions(userId, sessionId, limit);
+  }
+
+  // FREE mode: Use existing Leitner priority
+  return fetchFreeModeQuestions(userId, sessionId, limit);
+}
+
+/**
+ * Fetch questions for FREE mode (Leitner priority: Box 1 -> 2 -> 3)
+ */
+async function fetchFreeModeQuestions(
+  userId: string,
+  sessionId: string | undefined,
+  limit: number,
 ): Promise<FetchDueQuestionsOutput> {
   const now = new Date();
 
@@ -131,6 +175,318 @@ export async function fetchDueQuestions(
     hasNewQuestionsAvailable: await hasMoreNewQuestions(userId),
     sessionId,
   };
+}
+
+/**
+ * Fetch questions for INTERVIEW mode (CareerTopic order)
+ *
+ * Follows the ordered sequence of topics in the user's active career track.
+ * Focuses on the current topic (first topic with due questions).
+ */
+async function fetchInterviewModeQuestions(
+  userId: string,
+  sessionId: string | undefined,
+  limit: number,
+): Promise<FetchDueQuestionsOutput> {
+  const now = new Date();
+
+  // Get user's active career with topics in order
+  const userCareer = await prisma.userCareer.findFirst({
+    where: {
+      userId,
+      isActive: true,
+    },
+    include: {
+      career: {
+        include: {
+          careerTopics: {
+            include: {
+              topic: true,
+            },
+            orderBy: {
+              order: 'asc',
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!userCareer) {
+    // No active career - fall back to FREE mode behavior
+    return fetchFreeModeQuestions(userId, sessionId, limit);
+  }
+
+  // Find the first topic with due questions
+  let currentTopicOrder = 0;
+  let currentTopicIds: string[] = [];
+  let currentTopicName = '';
+  let totalTopics = userCareer.career.careerTopics.length;
+
+  for (const careerTopic of userCareer.career.careerTopics) {
+    currentTopicOrder = careerTopic.order;
+    currentTopicIds = [careerTopic.topicId];
+    currentTopicName = careerTopic.topic.name;
+
+    // Check if there are due questions for this topic
+    const dueCount = await prisma.userQuestion.count({
+      where: {
+        userId,
+        question: {
+          topicId: careerTopic.topicId,
+        },
+        dueDate: {
+          lte: now,
+        },
+      },
+    });
+
+    if (dueCount > 0) {
+      break; // Found the current topic
+    }
+
+    // No due questions for this topic - check if we should generate
+    // Generate questions if this is the first topic or if previous topics are "complete"
+    const previousTopicsComplete = await arePreviousTopicsComplete(
+      userId,
+      userCareer.career.id,
+      careerTopic.order,
+    );
+
+    if (previousTopicsComplete) {
+      // This is the active topic - generate questions if needed
+      await generateQuestionsForTopic(userId, careerTopic.topicId, 3);
+      break;
+    }
+  }
+
+  // If no topics found, use first topic
+  if (currentTopicIds.length === 0 && userCareer.career.careerTopics.length > 0) {
+    currentTopicIds = [userCareer.career.careerTopics[0].topicId];
+    currentTopicOrder = userCareer.career.careerTopics[0].order;
+    currentTopicName = userCareer.career.careerTopics[0].topic.name;
+    await generateQuestionsForTopic(userId, currentTopicIds[0], 3);
+  }
+
+  // Fetch due questions for the current topic
+  const dueUserQuestions = await prisma.userQuestion.findMany({
+    where: {
+      userId,
+      dueDate: { lte: now },
+      question: {
+        topicId: { in: currentTopicIds },
+      },
+    },
+    include: {
+      question: {
+        include: {
+          topic: true,
+        },
+      },
+    },
+    orderBy: [
+      { box: 'asc' },
+      { dueDate: 'asc' },
+      { lastSeenAt: 'asc' },
+    ],
+    take: limit,
+  });
+
+  // If not enough questions, generate more for this topic
+  if (dueUserQuestions.length < limit && currentTopicIds.length > 0) {
+    const remaining = limit - dueUserQuestions.length;
+    await generateQuestionsForTopic(userId, currentTopicIds[0], remaining);
+
+    // Fetch again
+    const additionalQuestions = await prisma.userQuestion.findMany({
+      where: {
+        userId,
+        question: {
+          topicId: { in: currentTopicIds },
+        },
+        dueDate: { lte: now },
+      },
+      include: {
+        question: {
+          include: {
+            topic: true,
+          },
+        },
+      },
+      orderBy: [
+        { box: 'asc' },
+        { dueDate: 'asc' },
+        { lastSeenAt: 'asc' },
+      ],
+      take: remaining,
+    });
+
+    dueUserQuestions.push(...additionalQuestions);
+  }
+
+  // Count questions answered for this topic (questions that have been seen at least once)
+  const questionsAnswered = await prisma.userQuestion.count({
+    where: {
+      userId,
+      question: {
+        topicId: { in: currentTopicIds },
+      },
+      lastSeenAt: { not: null }, // Has been answered at least once
+    },
+  });
+
+  // Calculate questions per topic (default to 5 if no specific configuration)
+  const questionsPerTopic = 5;
+
+  return {
+    questions: mapToDueQuestions(dueUserQuestions),
+    hasNewQuestionsAvailable: false, // INTERVIEW mode doesn't use this
+    sessionId,
+    interviewProgress: {
+      currentTopicIndex: currentTopicOrder,
+      totalTopics,
+      currentTopicName,
+      questionsAnswered,
+      questionsPerTopic,
+    },
+  };
+}
+
+/**
+ * Check if previous topics in the career track are "complete"
+ * (have questions in Box 3, meaning mastered)
+ */
+async function arePreviousTopicsComplete(
+  userId: string,
+  careerId: string,
+  currentOrder: number,
+): Promise<boolean> {
+  const previousTopics = await prisma.careerTopic.findMany({
+    where: {
+      careerId,
+      order: { lt: currentOrder },
+    },
+    include: {
+      topic: {
+        include: {
+          questions: {
+            include: {
+              userQuestions: {
+                where: { userId },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // Consider a topic complete if all its questions are in Box 3
+  for (const careerTopic of previousTopics) {
+    const userQuestions = careerTopic.topic.questions.flatMap((q) => q.userQuestions);
+
+    if (userQuestions.length === 0) {
+      return false; // Haven't started this topic yet
+    }
+
+    const allInBox3 = userQuestions.every((uq) => uq.box === 3);
+    if (!allInBox3) {
+      return false; // Still working on this topic
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Generate questions for a specific topic in interview mode
+ */
+async function generateQuestionsForTopic(
+  userId: string,
+  topicId: string,
+  count: number,
+): Promise<void> {
+  const topic = await prisma.topic.findUnique({
+    where: { id: topicId },
+  });
+
+  if (!topic) {
+    return;
+  }
+
+  // Get question IDs the user has already seen for this topic
+  const seenQuestionIds = (
+    await prisma.userQuestion.findMany({
+      where: {
+        userId,
+        question: { topicId },
+      },
+      select: { questionId: true },
+    })
+  ).map((uq) => uq.questionId);
+
+  // First try: Fetch template questions for this topic that haven't been seen
+  const templateQuestions = await prisma.question.findMany({
+    where: {
+      topicId,
+      isTemplate: true,
+      id: { notIn: seenQuestionIds },
+    },
+    take: count,
+  });
+
+  // Create UserQuestion entries for template questions
+  if (templateQuestions.length > 0) {
+    await prisma.userQuestion.createMany({
+      data: templateQuestions.map((q) => ({
+        userId,
+        questionId: q.id,
+        box: 1,
+        dueDate: new Date(),
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  // If still need more, generate via LLM
+  if (templateQuestions.length < count) {
+    const remaining = count - templateQuestions.length;
+
+    try {
+      const response = await llmService.generateQuestions({
+        topic: topic.name,
+        difficulty: topic.difficulty as QuestionDifficulty,
+        type: 'CONCEPTUAL' as QuestionType,
+        count: remaining,
+      });
+
+      for (const q of response.questions) {
+        const question = await prisma.question.create({
+          data: {
+            content: q.content,
+            type: q.type,
+            difficulty: q.difficulty,
+            topicId,
+            isTemplate: true,
+            createdBy: userId,
+            expectedTopics: q.expectedTopics,
+            hint: q.hint,
+          },
+        });
+
+        await prisma.userQuestion.create({
+          data: {
+            userId,
+            questionId: question.id,
+            box: 1,
+            dueDate: new Date(),
+          },
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to generate questions for topic ${topic.name}:`, error);
+    }
+  }
 }
 
 /**

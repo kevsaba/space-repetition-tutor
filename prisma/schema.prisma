@@ -1,7 +1,3 @@
-// Prisma Schema for Space Repetition Tutor
-// Version: 1.3
-// Database: PostgreSQL (Supabase)
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,22 +8,16 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ============================================================
-// CORE ENTITIES
-// ============================================================
-
 /// User accounts - simple auth for v1, upgradeable to Supabase Auth later
 model User {
-  id        String   @id @default(cuid())
-  username  String   @unique
-  password  String   // hashed with bcrypt
-  createdAt DateTime @default(now())
-
-  // Relations
+  id            String         @id @default(cuid())
+  username      String         @unique
+  password      String
+  createdAt     DateTime       @default(now())
+  questions     Question[]
   sessions      Session[]
-  userQuestions UserQuestion[]
-  questions     Question[]  // Questions created by this user (as templates)
   careers       UserCareer[]
+  userQuestions UserQuestion[]
 
   @@index([username])
   @@map("users")
@@ -35,18 +25,15 @@ model User {
 
 /// Topics represent areas of study (e.g., "Java Concurrency", "REST API Design")
 model Topic {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  category    String   // e.g., "Backend", "Database", "Distributed Systems"
-  track       Track    @default(JAVA)
-  difficulty  Difficulty @default(MID)
-  isTemplate  Boolean  @default(false) // Template topics can be reused
-
-  createdAt DateTime @default(now())
-
-  // Relations
-  questions        Question[]
-  careerTopics     CareerTopic[]
+  id           String        @id @default(cuid())
+  name         String        @unique
+  category     String
+  track        Track         @default(JAVA)
+  difficulty   Difficulty    @default(MID)
+  isTemplate   Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  careerTopics CareerTopic[]
+  questions    Question[]
 
   @@index([track])
   @@index([category])
@@ -55,25 +42,19 @@ model Topic {
 
 /// Questions - the core content unit
 model Question {
-  id          String       @id @default(cuid())
-  content     String       @db.Text
-  type        QuestionType @default(CONCEPTUAL)
-  difficulty  Difficulty   @default(MID)
-  topicId     String
-  topic       Topic        @relation(fields: [topicId], references: [id], onDelete: Cascade)
-
-  isTemplate Boolean  @default(false) // Template questions can be reused
-  createdBy  String?  // userId if template created by user
-  creator    User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
-
-  // Optional template fields for pre-generated questions
-  expectedTopics String[]   // Topics this question covers
-  hint           String?    @db.Text
-
-  createdAt DateTime @default(now())
-
-  // Relations
-  userQuestions UserQuestion[]
+  id             String         @id @default(cuid())
+  content        String
+  type           QuestionType   @default(CONCEPTUAL)
+  difficulty     Difficulty     @default(MID)
+  topicId        String
+  isTemplate     Boolean        @default(false)
+  createdBy      String?
+  expectedTopics String[]
+  hint           String?
+  createdAt      DateTime       @default(now())
+  creator        User?          @relation(fields: [createdBy], references: [id])
+  topic          Topic          @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  userQuestions  UserQuestion[]
 
   @@index([topicId])
   @@index([type])
@@ -83,46 +64,36 @@ model Question {
 
 /// UserQuestion - tracks user's progress on each question via Leitner system
 model UserQuestion {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  questionId  String
-  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-
-  // Leitner System Fields
-  box         Int      @default(1) // 1, 2, or 3
-  dueDate     DateTime
-  streak      Int      @default(0) // Consecutive passes
-  lastSeenAt  DateTime?
-
-  createdAt DateTime @default(now())
-
-  // Relations
-  answers Answer[]
+  id         String    @id @default(cuid())
+  userId     String
+  questionId String
+  box        Int       @default(1)
+  dueDate    DateTime
+  streak     Int       @default(0)
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+  answers    Answer[]
+  question   Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, questionId])
-  @@index([userId, dueDate]) // Composite index for fetching due questions
-  @@index([dueDate])         // For cleanup/archival queries
+  @@index([userId, dueDate])
+  @@index([dueDate])
   @@map("user_questions")
 }
 
 /// Answers - records of user responses
 model Answer {
-  id             String       @id @default(cuid())
-  userQuestionId String
-  userQuestion   UserQuestion @relation(fields: [userQuestionId], references: [id], onDelete: Cascade)
-
-  content     String   @db.Text
-  passed      Boolean
-  feedback    Json     // Structured feedback from LLM
-  answeredAt  DateTime @default(now())
-
-  // Follow-up tracking
-  isFollowUp     Boolean @default(false) // Whether this is a follow-up answer
-  followUpQuestion String? // The follow-up question text (if this is a follow-up answer)
-
-  // Session tracking (optional, for analytics)
-  sessionId String?
+  id               String       @id @default(cuid())
+  userQuestionId   String
+  content          String
+  passed           Boolean
+  feedback         Json
+  answeredAt       DateTime     @default(now())
+  isFollowUp       Boolean      @default(false)
+  followUpQuestion String?
+  sessionId        String?
+  userQuestion     UserQuestion @relation(fields: [userQuestionId], references: [id], onDelete: Cascade)
 
   @@index([userQuestionId])
   @@index([answeredAt])
@@ -133,37 +104,26 @@ model Answer {
 model Session {
   id          String        @id @default(cuid())
   userId      String
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   mode        SessionMode   @default(FREE)
   status      SessionStatus @default(IN_PROGRESS)
-
   startedAt   DateTime      @default(now())
   completedAt DateTime?
-
-  // Track context
-  careerId    String?       // If interview mode, which career track
+  careerId    String?
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([status])
   @@map("sessions")
 }
 
-// ============================================================
-// INTERVIEW MODE ENTITIES
-// ============================================================
-
 /// Career tracks for interview mode (e.g., "Senior Java Backend", "Full Stack Developer")
 model Career {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String   @db.Text
-
-  createdAt DateTime @default(now())
-
-  // Relations
-  careerTopics  CareerTopic[]
-  userCareers   UserCareer[]
+  id           String        @id @default(cuid())
+  name         String        @unique
+  description  String
+  createdAt    DateTime      @default(now())
+  careerTopics CareerTopic[]
+  userCareers  UserCareer[]
 
   @@map("careers")
 }
@@ -172,13 +132,11 @@ model Career {
 model CareerTopic {
   id        String   @id @default(cuid())
   careerId  String
-  career    Career   @relation(fields: [careerId], references: [id], onDelete: Cascade)
   topicId   String
-  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
-
-  order     Int // Position in interview sequence
-
+  order     Int
   createdAt DateTime @default(now())
+  career    Career   @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  topic     Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
   @@unique([careerId, topicId])
   @@index([careerId])
@@ -189,21 +147,16 @@ model CareerTopic {
 model UserCareer {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   careerId  String
-  career    Career   @relation(fields: [careerId], references: [id], onDelete: Cascade)
-
-  isActive  Boolean  @default(true) // User can have multiple careers, one active at a time
+  isActive  Boolean  @default(true)
   startedAt DateTime @default(now())
+  career    Career   @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, careerId])
   @@index([userId])
   @@map("user_careers")
 }
-
-// ============================================================
-// ENUMS
-// ============================================================
 
 enum Track {
   JAVA
@@ -213,9 +166,10 @@ enum Track {
 }
 
 enum QuestionType {
-  CONCEPTUAL  // v1
-  CODING      // v2
-  DESIGN      // v2
+  CONCEPTUAL
+  CODING
+  DESIGN
+  UPLOADED
 }
 
 enum Difficulty {
@@ -225,8 +179,8 @@ enum Difficulty {
 }
 
 enum SessionMode {
-  FREE       // User explores topics freely
-  INTERVIEW  // Structured interview preparation
+  FREE
+  INTERVIEW
 }
 
 enum SessionStatus {
