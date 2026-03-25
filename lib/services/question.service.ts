@@ -400,6 +400,9 @@ async function arePreviousTopicsComplete(
 
 /**
  * Generate questions for a specific topic in interview mode
+ *
+ * IMPORTANT: For custom careers with uploaded questions, we ONLY use uploaded questions.
+ * LLM questions are NOT generated for topics that have UPLOADED questions.
  */
 async function generateQuestionsForTopic(
   userId: string,
@@ -411,6 +414,47 @@ async function generateQuestionsForTopic(
   });
 
   if (!topic) {
+    return;
+  }
+
+  // CRITICAL: Check if this topic has UPLOADED questions (from PDF upload)
+  const uploadedQuestions = await prisma.question.findMany({
+    where: {
+      topicId,
+      type: 'UPLOADED',
+      isTemplate: false,
+    },
+  });
+
+  // For each uploaded question, create UserQuestion if not exists
+  // This ensures uploaded questions are immediately available when career is selected
+  for (const question of uploadedQuestions) {
+    const existingUserQuestion = await prisma.userQuestion.findUnique({
+      where: {
+        userId_questionId: {
+          userId,
+          questionId: question.id,
+        },
+      },
+    });
+
+    if (!existingUserQuestion) {
+      await prisma.userQuestion.create({
+        data: {
+          userId,
+          questionId: question.id,
+          box: 1,
+          dueDate: new Date(),
+          streak: 0,
+        },
+      });
+    }
+  }
+
+  // ONLY generate LLM questions if NO uploaded questions exist for this topic
+  // This prevents mixing uploaded and LLM questions in custom careers
+  if (uploadedQuestions.length > 0) {
+    console.log(`[generateQuestionsForTopic] Topic "${topic.name}" has ${uploadedQuestions.length} uploaded questions. Skipping LLM generation.`);
     return;
   }
 
@@ -448,7 +492,7 @@ async function generateQuestionsForTopic(
     });
   }
 
-  // If still need more, generate via LLM
+  // If still need more, generate via LLM (only for template careers)
   if (templateQuestions.length < count) {
     const remaining = count - templateQuestions.length;
 

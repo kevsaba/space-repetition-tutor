@@ -3,11 +3,13 @@
  *
  * Select a career track for the user.
  * Deactivates any previously active career.
+ * Populates UserQuestion records for any uploaded questions in the career.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { CareerService, CareerError } from '@/lib/services/career.service';
 import { authenticate } from '@/lib/middleware';
+import { prisma } from '@/lib/prisma';
 
 interface RouteContext {
   params: Promise<{
@@ -25,6 +27,52 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     // Select career
     const userCareer = await CareerService.selectCareer(userId, careerId);
+
+    // Populate UserQuestion records for any uploaded questions in this career
+    // This ensures that when a user selects a custom career (created from PDF upload),
+    // all uploaded questions are immediately available for review
+    const activeCareer = await prisma.career.findUnique({
+      where: { id: careerId },
+      include: {
+        careerTopics: {
+          include: {
+            topic: {
+              include: {
+                questions: {
+                  where: {
+                    type: 'UPLOADED',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (activeCareer) {
+      // For each topic in the career, create UserQuestion records for uploaded questions
+      for (const careerTopic of activeCareer.careerTopics) {
+        const uploadedQuestions = careerTopic.topic.questions;
+
+        // Create UserQuestion for any that don't exist
+        for (const question of uploadedQuestions) {
+          await prisma.userQuestion.upsert({
+            where: {
+              userId_questionId: { userId, questionId: question.id },
+            },
+            create: {
+              userId,
+              questionId: question.id,
+              box: 1,
+              dueDate: new Date(),
+              streak: 0,
+            },
+            update: {}, // Don't modify if already exists
+          });
+        }
+      }
+    }
 
     return NextResponse.json({ userCareer });
   } catch (error) {

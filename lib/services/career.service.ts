@@ -276,6 +276,15 @@ export async function createFromUpload(
     throw new CareerError('No questions found in uploaded file', 'NO_QUESTIONS_IN_UPLOAD');
   }
 
+  // Verify user exists (handles case where user was deleted but token still valid)
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new CareerError('User not found. Please log out and sign up again.', 'USER_NOT_FOUND');
+  }
+
   try {
     console.log('[createFromUpload] Starting career creation for user:', userId, 'careerName:', careerName);
     console.log('[createFromUpload] Parsed data topics:', parsedData.topics.map(t => ({ name: t.name, questions: t.questions.length })));
@@ -334,6 +343,22 @@ export async function createFromUpload(
       );
 
       questionsAdded += questions.length;
+
+      // 3b. Create UserQuestion records for uploaded questions (Box 1, due now)
+      // This ensures uploaded questions are immediately available for review
+      await Promise.all(
+        questions.map((question) =>
+          prisma.userQuestion.create({
+            data: {
+              userId,
+              questionId: question.id,
+              box: 1,
+              dueDate: new Date(), // Due immediately
+              streak: 0,
+            },
+          })
+        )
+      );
     }
 
     // 4. Create CareerTopic links in order

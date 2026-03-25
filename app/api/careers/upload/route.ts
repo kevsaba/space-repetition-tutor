@@ -139,9 +139,10 @@ export async function POST(request: NextRequest) {
 
     // Handle domain errors
     if (error instanceof CareerError) {
+      const statusCode = error.code === 'USER_NOT_FOUND' ? 401 : 400;
       return NextResponse.json(
         { error: { code: error.code, message: error.message } },
-        { status: 400 }
+        { status: statusCode }
       );
     }
 
