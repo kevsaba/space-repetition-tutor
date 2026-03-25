@@ -81,6 +81,7 @@ export default function StudyPage() {
   const [studyMode, setStudyMode] = useState<StudyMode>('FREE');
   const [hasActiveCareer, setHasActiveCareer] = useState(false);
   const [showCareerSelector, setShowCareerSelector] = useState(false);
+  const [isCareerSelectorOpen, setIsCareerSelectorOpen] = useState(false);
 
   // Interview progress state
   const [interviewProgress, setInterviewProgress] = useState<{
@@ -152,7 +153,8 @@ export default function StudyPage() {
   // Handle mode change
   const handleModeChange = (newMode: StudyMode) => {
     if (newMode === 'INTERVIEW' && !hasActiveCareer) {
-      setShowCareerSelector(true);
+      // Open the career selector dropdown directly, no modal needed
+      setIsCareerSelectorOpen(true);
       return;
     }
     setStudyMode(newMode);
@@ -171,6 +173,7 @@ export default function StudyPage() {
   const handleCareerSelected = () => {
     setHasActiveCareer(true);
     setShowCareerSelector(false);
+    setIsCareerSelectorOpen(false);
     setStudyMode('INTERVIEW');
     setSessionId(undefined);
     setCurrentQuestion(null);
@@ -449,6 +452,8 @@ export default function StudyPage() {
               <CareerSelector
                 onCareerChange={handleCareerSelected}
                 studyMode={studyMode}
+                isOpen={isCareerSelectorOpen}
+                onOpenChange={setIsCareerSelectorOpen}
                 className={studyMode === 'INTERVIEW' ? 'ring-2 ring-indigo-200' : ''}
               />
               <button
@@ -897,26 +902,17 @@ export default function StudyPage() {
                 <h3 className="text-lg font-semibold text-gray-900">Select a Career Track</h3>
               </div>
               <p className="text-gray-600 mb-6">
-                Interview mode requires you to select a career track. This allows us to guide you through topics in a structured order for your target role.
+                Interview mode requires you to select a career track. Use the dropdown in the header to choose your career path.
               </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => {
                     setShowCareerSelector(false);
-                    setStudyMode('FREE');
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
-                >
-                  Back to Free Mode
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCareerSelector(false);
-                    // The CareerSelector in header will handle selection
+                    setIsCareerSelectorOpen(true);
                   }}
                   className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
                 >
-                  Select Career
+                  Open Career Selector
                 </button>
               </div>
             </div>

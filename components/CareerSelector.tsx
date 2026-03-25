@@ -30,18 +30,31 @@ interface CareerSelectorProps {
   className?: string;
   studyMode?: 'FREE' | 'INTERVIEW';
   showUploadButton?: boolean;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function CareerSelector({ onCareerChange, className = '', studyMode = 'INTERVIEW', showUploadButton = true }: CareerSelectorProps) {
+export function CareerSelector({
+  onCareerChange,
+  className = '',
+  studyMode = 'INTERVIEW',
+  showUploadButton = true,
+  isOpen: controlledIsOpen,
+  onOpenChange
+}: CareerSelectorProps) {
   const router = useRouter();
   const [careers, setCareers] = useState<Career[]>([]);
   const [activeCareer, setActiveCareer] = useState<UserCareer | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
   const [error, setError] = useState('');
   // Track if we've already loaded the active career to avoid re-fetching on mode switch
   const [initialized, setInitialized] = useState(false);
+
+  // Use controlled state if provided, otherwise use internal state
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const setIsOpen = onOpenChange || setInternalIsOpen;
 
   // Fetch available careers
   useEffect(() => {
@@ -146,6 +159,16 @@ export function CareerSelector({ onCareerChange, className = '', studyMode = 'IN
       setSwitching(false);
     }
   };
+
+  // Show loading spinner when switching careers
+  if (switching) {
+    return (
+      <div className={`flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg ${className}`}>
+        <div className="animate-spin rounded-full h-4 w-4 border-2 border-indigo-600 border-t-transparent"></div>
+        <span className="text-sm text-gray-600">Loading...</span>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

@@ -31,46 +31,58 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Populate UserQuestion records for any uploaded questions in this career
     // This ensures that when a user selects a custom career (created from PDF upload),
     // all uploaded questions are immediately available for review
-    const activeCareer = await prisma.career.findUnique({
-      where: { id: careerId },
-      include: {
-        careerTopics: {
-          include: {
-            topic: {
-              include: {
-                questions: {
-                  where: {
-                    type: 'UPLOADED',
-                  },
-                },
-              },
+
+    // OPTIMIZATION: Use a single query to get all uploaded question IDs for this career
+    // Then bulk create UserQuestion records only for those that don't exist yet
+    const careerQuestions = await prisma.question.findMany({
+      where: {
+        type: 'UPLOADED',
+        topic: {
+          careerTopics: {
+            some: {
+              careerId,
             },
           },
         },
       },
+      select: {
+        id: true,
+      },
     });
 
-    if (activeCareer) {
-      // For each topic in the career, create UserQuestion records for uploaded questions
-      for (const careerTopic of activeCareer.careerTopics) {
-        const uploadedQuestions = careerTopic.topic.questions;
+    if (careerQuestions.length > 0) {
+      // Get existing UserQuestion IDs for this user in a single query
+      const existingUserQuestions = await prisma.userQuestion.findMany({
+        where: {
+          userId,
+          questionId: {
+            in: careerQuestions.map((q) => q.id),
+          },
+        },
+        select: {
+          questionId: true,
+        },
+      });
 
-        // Create UserQuestion for any that don't exist
-        for (const question of uploadedQuestions) {
-          await prisma.userQuestion.upsert({
-            where: {
-              userId_questionId: { userId, questionId: question.id },
-            },
-            create: {
-              userId,
-              questionId: question.id,
-              box: 1,
-              dueDate: new Date(),
-              streak: 0,
-            },
-            update: {}, // Don't modify if already exists
-          });
-        }
+      const existingQuestionIds = new Set(existingUserQuestions.map((uq) => uq.questionId));
+
+      // Filter out questions that already have UserQuestion records
+      const newQuestionIds = careerQuestions
+        .map((q) => q.id)
+        .filter((id) => !existingQuestionIds.has(id));
+
+      // Bulk create UserQuestion records for new questions
+      if (newQuestionIds.length > 0) {
+        await prisma.userQuestion.createMany({
+          data: newQuestionIds.map((questionId) => ({
+            userId,
+            questionId,
+            box: 1,
+            dueDate: new Date(),
+            streak: 0,
+          })),
+          skipDuplicates: true,
+        });
       }
     }
 
