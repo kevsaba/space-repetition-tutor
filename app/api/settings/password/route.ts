@@ -7,8 +7,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/services/auth.service';
-import { UserService } from '@/lib/services/user.service';
+import { hasEncryptedApiKey, decryptApiKey } from '@/lib/services/llm-config.service';
 import { prisma } from '@/lib/prisma';
+import { encryptionService } from '@/lib/services/encryption.service';
 import { z } from 'zod';
 import { cookies } from 'next/headers';
 
@@ -81,11 +82,50 @@ export async function POST(request: NextRequest) {
     // Hash new password
     const hashedPassword = await AuthService.hashPassword(validatedData.newPassword);
 
+    // Check if user has encrypted LLM config
+    const hasEncryptedKey = await hasEncryptedApiKey(user.id);
+    let newDecryptedKey: string | null = null;
+
+    if (hasEncryptedKey) {
+      try {
+        // Decrypt the API key with old password and re-encrypt with new password
+        const apiKey = await decryptApiKey(user.id, validatedData.currentPassword);
+
+        // Re-encrypt with new password
+        const encrypted = encryptionService.encrypt(apiKey, validatedData.newPassword);
+
+        // Update encrypted API key in database
+        await prisma.userLlmConfig.update({
+          where: { userId: user.id },
+          data: {
+            apiKeyEncrypted: encryptionService.formatForStorage(encrypted),
+          },
+        });
+
+        newDecryptedKey = apiKey;
+      } catch (error) {
+        // If re-encryption fails, log but allow password change to continue
+        // User will need to re-enter their API key
+        console.error('Failed to re-encrypt LLM config on password change:', error);
+      }
+    }
+
     // Update password
     await prisma.user.update({
       where: { id: user.id },
       data: { password: hashedPassword },
     });
+
+    // Update the temp key cookie if we successfully re-encrypted
+    if (newDecryptedKey) {
+      cookieStore.set('llm_temp_key', newDecryptedKey, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+        path: '/',
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

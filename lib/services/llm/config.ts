@@ -2,7 +2,10 @@
  * LLM Service Configuration
  *
  * Configuration management for LLM service.
- * Uses runtime config (from setup wizard) or environment variables.
+ * Priority order:
+ * 1. User-specific config (from session/database with decrypted temp cookie)
+ * 2. Global config (from runtime setup wizard)
+ * 3. Environment variables
  */
 
 import {
@@ -11,6 +14,9 @@ import {
   getLLMModel,
 } from '@/lib/config/runtime';
 import { DEFAULT_RETRY_CONFIG, type RetryConfig } from './types';
+import { cookies } from 'next/headers';
+import { prisma } from '@/lib/prisma';
+import { AuthService } from '@/lib/services/auth.service';
 
 /**
  * LLM configuration from runtime config or environment variables
@@ -76,5 +82,106 @@ export function validateLLMConfig(config: LLMConfig): void {
 
 // Export a function to get fresh config (for runtime config changes)
 export function getFreshLLMConfig(): LLMConfig {
+  return getLLMConfig();
+}
+
+/**
+ * User LLM configuration from database
+ */
+interface UserLLMDbConfig {
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+/**
+ * Get user-specific LLM configuration.
+ *
+ * Priority order:
+ * 1. Session storage (llm_temp_key cookie)
+ * 2. Database storage (decrypted via temp cookie + password verification)
+ * 3. Falls back to null (caller should use global config)
+ *
+ * @returns User LLM config or null if not configured
+ */
+export async function getUserLLMConfig(): Promise<UserLLMDbConfig | null> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('auth_token')?.value;
+
+    if (!token) {
+      return null;
+    }
+
+    const payload = AuthService.verifyToken(token);
+
+    // Get user's LLM config from database
+    const userConfig = await prisma.userLlmConfig.findUnique({
+      where: { userId: payload.userId },
+    });
+
+    if (!userConfig) {
+      return null;
+    }
+
+    // Check storage preference
+    if (userConfig.storagePreference === 'SESSION') {
+      // For SESSION storage, API key should be in temp cookie
+      const tempKey = cookieStore.get('llm_temp_key')?.value;
+      if (!tempKey) {
+        return null;
+      }
+      return {
+        apiUrl: userConfig.apiUrl,
+        apiKey: tempKey,
+        model: userConfig.model,
+      };
+    } else {
+      // For DATABASE storage, API key was decrypted on login and stored in temp cookie
+      const tempKey = cookieStore.get('llm_temp_key')?.value;
+      if (!tempKey) {
+        return null;
+      }
+      return {
+        apiUrl: userConfig.apiUrl,
+        apiKey: tempKey,
+        model: userConfig.model,
+      };
+    }
+  } catch (error) {
+    // If auth fails or any error, fall back to null
+    return null;
+  }
+}
+
+/**
+ * Get LLM configuration with user-specific priority.
+ *
+ * Priority order:
+ * 1. User-specific config (from session/database)
+ * 2. Global config (from runtime setup wizard)
+ * 3. Environment variables
+ *
+ * @returns LLM configuration
+ */
+export async function getLLMConfigWithUserFallback(): Promise<LLMConfig> {
+  // Try user config first
+  const userConfig = await getUserLLMConfig();
+  if (userConfig) {
+    let url = userConfig.apiUrl;
+    // Ensure URL includes /chat/completions path
+    if (!url.includes('/chat/completions')) {
+      url = url.endsWith('/') ? `${url}chat/completions` : `${url}/chat/completions`;
+    }
+    return {
+      url,
+      apiKey: userConfig.apiKey,
+      model: userConfig.model,
+      timeout: 30000,
+      retry: DEFAULT_RETRY_CONFIG,
+    };
+  }
+
+  // Fall back to global config
   return getLLMConfig();
 }

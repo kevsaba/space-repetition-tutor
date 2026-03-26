@@ -7,11 +7,10 @@
  * interview questions to create a custom career path.
  */
 
+import { useState } from 'react';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { AuthenticatedLayout } from '@/components/AuthenticatedLayout';
 import { CSVUploader } from '@/components/CSVUploader';
-import Link from 'next/link';
 
 interface CSVUploadResult {
   careerId: string;
@@ -25,17 +24,9 @@ interface CSVUploadResult {
 }
 
 export default function UploadPage() {
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
+  const { user } = useAuth();
   const [showSuccess, setShowSuccess] = useState(false);
   const [successResult, setSuccessResult] = useState<CSVUploadResult | null>(null);
-
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, authLoading, router]);
 
   const handleUploadSuccess = (result: CSVUploadResult) => {
     setSuccessResult(result);
@@ -45,44 +36,26 @@ export default function UploadPage() {
   const handleStartStudying = () => {
     // Store the desired mode in sessionStorage so the study page can pick it up
     sessionStorage.setItem('startInInterviewMode', 'true');
-    router.push('/study');
+    window.location.href = '/study';
   };
 
-  if (authLoading) {
+  if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+      <AuthenticatedLayout>
+        <div className="flex items-center justify-center px-4 py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
         </div>
-      </div>
+      </AuthenticatedLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <Link href="/study" className="text-2xl font-bold text-gray-900 hover:text-indigo-600 transition-colors">
-              Space Repetition Tutor
-            </Link>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">Welcome, {user?.username}</span>
-            <Link
-              href="/study"
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
-            >
-              Back to Study
-            </Link>
-          </div>
-        </div>
-      </header>
-
+    <AuthenticatedLayout>
       {/* Main Content */}
-      <main className="max-w-2xl mx-auto px-4 py-12">
+      <div className="px-8 py-12">
         {!showSuccess ? (
           <>
             {/* Page Header */}
@@ -159,7 +132,7 @@ export default function UploadPage() {
             </div>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </AuthenticatedLayout>
   );
 }

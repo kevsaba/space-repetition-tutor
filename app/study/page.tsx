@@ -15,6 +15,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { AuthenticatedLayout } from '@/components/AuthenticatedLayout';
 import { QuestionDisplay } from '@/components/QuestionDisplay';
 import { AnswerInput } from '@/components/AnswerInput';
 import { FeedbackDisplay } from '@/components/FeedbackDisplay';
@@ -75,7 +76,7 @@ type StudyState =
 type StudyMode = 'FREE' | 'INTERVIEW';
 
 export default function StudyPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
 
   // Interview mode state
@@ -119,16 +120,9 @@ export default function StudyPage() {
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
 
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, authLoading, router]);
-
   // Check if user wants to start in INTERVIEW mode (e.g., after upload)
   useEffect(() => {
-    if (!authLoading && user && !sessionId) {
+    if (user && !sessionId) {
       const startInInterviewMode = sessionStorage.getItem('startInInterviewMode');
       if (startInInterviewMode === 'true') {
         // Clear the flag so it doesn't persist
@@ -153,7 +147,7 @@ export default function StudyPage() {
         fetchQuestions('FREE');
       }
     }
-  }, [user, authLoading]);
+  }, [user]);
 
   // Check if user has an active career for interview mode
   // Only check on initial mount if in INTERVIEW mode, not on mode switch
@@ -474,82 +468,51 @@ export default function StudyPage() {
     router.push('/login');
   };
 
-  if (authLoading || !user) {
+  if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+      <AuthenticatedLayout>
+        <div className="flex items-center justify-center px-4 py-12">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
         </div>
-      </div>
+      </AuthenticatedLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 py-4 min-h-[72px]">
-          {/* Top row - Logo, Mode Selector, Career Selector, Logout */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Space Repetition Tutor</h1>
-              <p className="text-sm text-gray-600">Welcome, {user.username}</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link
-                href="/dashboard"
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Dashboard
-              </Link>
-              <ModeSelector
-                currentMode={studyMode}
-                onModeChange={handleModeChange}
-                hasActiveCareer={hasActiveCareer}
-              />
-              <CareerSelector
-                onCareerChange={handleCareerSelected}
-                studyMode={studyMode}
-                isOpen={isCareerSelectorOpen}
-                onOpenChange={setIsCareerSelectorOpen}
-                className={studyMode === 'INTERVIEW' ? 'ring-2 ring-indigo-200' : ''}
-              />
-              <Link
-                href="/settings"
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1"
-                title="Settings"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span className="hidden sm:inline">Settings</span>
-              </Link>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Logout
-              </button>
-            </div>
+    <AuthenticatedLayout>
+      {/* Top Controls Bar - Mode and Career Selection */}
+      <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <ModeSelector
+              currentMode={studyMode}
+              onModeChange={handleModeChange}
+              hasActiveCareer={hasActiveCareer}
+            />
+            <CareerSelector
+              onCareerChange={handleCareerSelected}
+              studyMode={studyMode}
+              isOpen={isCareerSelectorOpen}
+              onOpenChange={setIsCareerSelectorOpen}
+              className={studyMode === 'INTERVIEW' ? 'ring-2 ring-indigo-200' : ''}
+            />
           </div>
-
-          {/* Progress row - Only show in INTERVIEW mode */}
-          <div className="min-h-[40px]">
-            {studyMode === 'INTERVIEW' && interviewProgress && (
-              <CompactProgress
-                currentTopicIndex={interviewProgress.currentTopicIndex}
-                totalTopics={interviewProgress.totalTopics}
-                currentTopicName={interviewProgress.currentTopicName}
-              />
-            )}
-          </div>
+          {/* Compact Progress - Only show in INTERVIEW mode */}
+          {studyMode === 'INTERVIEW' && interviewProgress && (
+            <CompactProgress
+              currentTopicIndex={interviewProgress.currentTopicIndex}
+              totalTopics={interviewProgress.totalTopics}
+              currentTopicName={interviewProgress.currentTopicName}
+            />
+          )}
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <div className="px-8 py-8">
         {/* Interview Progress Card - Only show in INTERVIEW mode */}
         {studyMode === 'INTERVIEW' && interviewProgress && (
           <div className="mb-6">
@@ -988,7 +951,7 @@ export default function StudyPage() {
             </div>
           </>
         )}
-      </main>
-    </div>
+      </div>
+    </AuthenticatedLayout>
   );
 }

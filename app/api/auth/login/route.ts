@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { UserService } from '@/lib/services/user.service';
-import { AuthService } from '@/lib/services/auth.service';
+import { hasEncryptedApiKey, decryptApiKey } from '@/lib/services/llm-config.service';
 import { z } from 'zod';
 import { cookies } from 'next/headers';
 
@@ -38,6 +38,27 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',
     });
+
+    // Check if user has encrypted LLM config and decrypt it
+    const hasEncryptedKey = await hasEncryptedApiKey(user.id);
+    if (hasEncryptedKey) {
+      try {
+        // Decrypt the API key using the login password
+        const apiKey = await decryptApiKey(user.id, validatedData.password);
+
+        // Set temp key cookie for use in LLM calls
+        cookieStore.set('llm_temp_key', apiKey, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 24 * 7, // 7 days
+          path: '/',
+        });
+      } catch (error) {
+        // Log error but don't fail login - user can re-enter their API key
+        console.error('Failed to decrypt LLM config on login:', error);
+      }
+    }
 
     // Return user
     return NextResponse.json({
