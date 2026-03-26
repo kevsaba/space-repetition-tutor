@@ -8,7 +8,7 @@
  * - Shows loading spinner while checking
  * - Redirects to /login if not authenticated
  * - Checks if user has completed LLM setup
- * - Redirects to /settings if setup not complete (with fun message)
+ * - Shows "Setup Required" message if LLM not configured (instead of redirect)
  * - Allows access to /settings page even when not set up
  * - Renders SidePanelLayout with children as content
  */
@@ -16,7 +16,7 @@
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ArrowRight, Settings } from 'lucide-react';
 import { SidePanelLayout } from './SidePanel';
 
 interface AuthenticatedLayoutProps {
@@ -24,11 +24,11 @@ interface AuthenticatedLayoutProps {
 }
 
 const FUN_MESSAGES = [
-  "Every hero needs their gear first! Let's set up your AI sidekick.",
-  "Before we conquer the world, let's get you powered up!",
-  "Time to activate your superpowers! Setup first.",
-  "Even wizards need their wands. Let's configure your AI!",
-  "Your journey begins with a single step... to Settings!",
+  "You're too smart for your own good! Go back to Settings and configure your LLM credentials first.",
+  "Whoa there, Einstein! Before you conquer the world, we need to set up your AI sidekick.",
+  "Hold your horses, genius! Let's get your AI credentials configured first.",
+  "Nice enthusiasm! But even superheroes need their gear. Hit up Settings first.",
+  "You're eager, I love that! But we need to teach you our secret handshake first... in Settings.",
 ];
 
 export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
@@ -72,17 +72,6 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     }
   }, [user, authLoading, router]);
 
-  // Redirect to settings if setup not complete (but allow settings page itself)
-  useEffect(() => {
-    if (!authLoading && !setupChecking && user && !hasLLMConfig && pathname !== '/settings') {
-      // Store the original destination so we can redirect back after setup
-      if (pathname !== '/login') {
-        sessionStorage.setItem('postSetupRedirect', pathname);
-      }
-      router.push(`/settings?message=${encodeURIComponent(funMessage)}`);
-    }
-  }, [user, authLoading, setupChecking, hasLLMConfig, pathname, router, funMessage]);
-
   // Show loading state while checking authentication or setup
   if (authLoading || setupChecking) {
     return (
@@ -100,6 +89,35 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
     return null;
   }
 
-  // Render with SidePanel layout
-  return <SidePanelLayout>{children}</SidePanelLayout>;
+  // If user doesn't have LLM config and not on settings page, show setup required message
+  const needsSetup = !hasLLMConfig && pathname !== '/settings';
+
+  return (
+    <SidePanelLayout>
+      {needsSetup ? (
+        <div className="min-h-[60vh] flex items-center justify-center px-4">
+          <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 text-center">
+            <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Settings className="w-8 h-8 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              Setup Required
+            </h2>
+            <p className="text-gray-600 mb-8 leading-relaxed">
+              {funMessage}
+            </p>
+            <button
+              onClick={() => router.push('/settings')}
+              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+            >
+              Go to Settings
+              <ArrowRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        children
+      )}
+    </SidePanelLayout>
+  );
 }

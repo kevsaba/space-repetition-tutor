@@ -6,7 +6,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { UserService } from '@/lib/services/user.service';
+import { AuthService } from '@/lib/services/auth.service';
 import { z } from 'zod';
+import { cookies } from 'next/headers';
 
 // Validation schema
 const registerSchema = z.object({
@@ -26,6 +28,19 @@ export async function POST(request: NextRequest) {
       validatedData.username,
       validatedData.password,
     );
+
+    // Generate auth token for auto-login
+    const token = AuthService.generateToken(user);
+
+    // Set auth token in httpOnly cookie (same as login)
+    const cookieStore = await cookies();
+    cookieStore.set('auth_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    });
 
     // Return user (without password)
     return NextResponse.json(

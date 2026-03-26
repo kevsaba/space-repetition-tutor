@@ -10,6 +10,7 @@
  * - Mobile responsive with hamburger menu
  * - Active state highlighting for current page
  * - Icons from lucide-react
+ * - Disabled state for items that require LLM configuration
  */
 
 import { useState, useEffect } from 'react';
@@ -37,6 +38,7 @@ interface NavItem {
   href: string;
   icon: React.ReactNode;
   badge?: string | null;
+  requiresConfig?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -44,31 +46,37 @@ const NAV_ITEMS: NavItem[] = [
     name: 'Dashboard',
     href: '/dashboard',
     icon: <LayoutDashboard className="w-5 h-5" />,
+    requiresConfig: true,
   },
   {
     name: 'Free Practice',
     href: '/free',
     icon: <BookOpen className="w-5 h-5" />,
+    requiresConfig: true,
   },
   {
     name: 'Interview Mode',
     href: '/interview',
     icon: <FileUp className="w-5 h-5" />,
+    requiresConfig: true,
   },
   {
     name: 'Create Question',
     href: '/create',
     icon: <PlusCircle className="w-5 h-5" />,
+    requiresConfig: true,
   },
   {
     name: 'Upload Questions',
     href: '/upload',
     icon: <Upload className="w-5 h-5" />,
+    requiresConfig: true,
   },
   {
     name: 'Settings',
     href: '/settings',
     icon: <Settings className="w-5 h-5" />,
+    requiresConfig: false,
   },
 ];
 
@@ -82,6 +90,8 @@ export function SidePanel({ username }: SidePanelProps) {
   const { user, logout } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [hasLLMConfig, setHasLLMConfig] = useState(false);
+  const [checkingConfig, setCheckingConfig] = useState(true);
 
   // Load collapsed state from localStorage
   useEffect(() => {
@@ -90,6 +100,30 @@ export function SidePanel({ username }: SidePanelProps) {
       setIsCollapsed(saved === 'true');
     }
   }, []);
+
+  // Check if user has LLM config
+  useEffect(() => {
+    if (!user) return;
+
+    const checkLLMConfig = async () => {
+      try {
+        const response = await fetch('/api/user/llm-config');
+        if (response.ok) {
+          setHasLLMConfig(true);
+        } else if (response.status === 404) {
+          setHasLLMConfig(false);
+        }
+      } catch (error) {
+        console.error('Failed to check LLM config:', error);
+        // On error, assume no config to be safe
+        setHasLLMConfig(false);
+      } finally {
+        setCheckingConfig(false);
+      }
+    };
+
+    checkLLMConfig();
+  }, [user]);
 
   // Save collapsed state to localStorage
   useEffect(() => {
@@ -180,6 +214,29 @@ export function SidePanel({ username }: SidePanelProps) {
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
           {NAV_ITEMS.map((item) => {
             const active = isActive(item.href);
+            const isDisabled = item.requiresConfig && !hasLLMConfig && !checkingConfig;
+
+            if (isDisabled) {
+              // Render as disabled button (not a link)
+              return (
+                <button
+                  key={item.href}
+                  disabled
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                    opacity-50 cursor-not-allowed
+                    text-gray-400
+                  `}
+                  title={isCollapsed ? `${item.name} (requires LLM config)` : undefined}
+                >
+                  <div className="flex-shrink-0">{item.icon}</div>
+                  {!isCollapsed && (
+                    <span className="truncate">{item.name}</span>
+                  )}
+                </button>
+              );
+            }
+
             return (
               <Link
                 key={item.href}
