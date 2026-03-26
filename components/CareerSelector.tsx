@@ -29,7 +29,6 @@ interface CareerSelectorProps {
   onCareerChange?: (careerId: string) => void;
   className?: string;
   studyMode?: 'FREE' | 'INTERVIEW';
-  showUploadButton?: boolean;
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -38,7 +37,6 @@ export function CareerSelector({
   onCareerChange,
   className = '',
   studyMode = 'INTERVIEW',
-  showUploadButton = true,
   isOpen: controlledIsOpen,
   onOpenChange
 }: CareerSelectorProps) {
@@ -163,7 +161,7 @@ export function CareerSelector({
   // Show loading spinner when switching careers
   if (switching) {
     return (
-      <div className={`flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg w-64 ${className}`}>
+      <div className={`flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg w-96 ${className}`}>
         <div className="animate-spin rounded-full h-4 w-4 border-2 border-indigo-600 border-t-transparent"></div>
         <span className="text-sm text-gray-600">Loading...</span>
       </div>
@@ -181,7 +179,7 @@ export function CareerSelector({
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors w-64"
+        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors w-96"
       >
         <svg className="w-5 h-5 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -209,7 +207,7 @@ export function CareerSelector({
           />
 
           {/* Dropdown Content */}
-          <div className="absolute z-20 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto">
+          <div className="absolute z-20 mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto">
             <div className="p-3 border-b border-gray-100">
               <h3 className="text-sm font-semibold text-gray-900">Career Track</h3>
               <p className="text-xs text-gray-500 mt-1">Choose your interview preparation path</p>
@@ -258,23 +256,6 @@ export function CareerSelector({
                 <div className="p-4 text-center text-gray-500 text-sm">
                   No career tracks available
                 </div>
-              )}
-
-              {/* Upload PDF Button */}
-              {showUploadButton && (
-                <Link
-                  href="/upload"
-                  className="block m-2 p-3 rounded-lg border-2 border-dashed border-indigo-300 hover:border-indigo-400 hover:bg-indigo-50 transition-colors text-center"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <div className="flex items-center justify-center gap-2 text-indigo-600">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                    <span className="font-medium">Upload PDF to Create Career</span>
-                  </div>
-                  <p className="text-xs text-indigo-500 mt-1">Create a custom career path from your PDF</p>
-                </Link>
               )}
             </div>
           </div>

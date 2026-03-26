@@ -157,12 +157,12 @@ export async function getUserLLMConfig(): Promise<UserLLMDbConfig | null> {
 /**
  * Get LLM configuration with user-specific priority.
  *
- * Priority order:
- * 1. User-specific config (from session/database)
- * 2. Global config (from runtime setup wizard)
- * 3. Environment variables
+ * SECURITY: Each user MUST have their own LLM config.
+ * This function throws an error if user has no config configured.
+ * We DO NOT fall back to global config to prevent credential leakage.
  *
  * @returns LLM configuration
+ * @throws Error if user has not configured their LLM settings
  */
 export async function getLLMConfigWithUserFallback(): Promise<LLMConfig> {
   // Try user config first
@@ -182,6 +182,9 @@ export async function getLLMConfigWithUserFallback(): Promise<LLMConfig> {
     };
   }
 
-  // Fall back to global config
-  return getLLMConfig();
+  // SECURITY: Do NOT fall back to global config
+  // Each user must have their own config to prevent credential leakage
+  throw new Error(
+    'LLM configuration not found. Please configure your LLM settings in Settings.'
+  );
 }

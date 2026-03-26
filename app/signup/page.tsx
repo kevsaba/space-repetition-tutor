@@ -36,7 +36,7 @@ export default function SignupPage() {
 
     try {
       await register(username, password);
-      router.push('/study');
+      router.push('/settings');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
