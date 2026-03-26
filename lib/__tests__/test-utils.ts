@@ -3,13 +3,25 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { getDatabaseUrl } from '@/lib/config/runtime';
 
 // Create a mock Prisma client for testing
+// Uses runtime config if environment variables are not set
 export const createMockPrismaClient = () => {
+  // Get database URL from runtime config or environment
+  let databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    try {
+      databaseUrl = getDatabaseUrl();
+    } catch {
+      // Config not available, tests will fail anyway
+    }
+  }
+
   const prisma = new PrismaClient({
     datasources: {
       db: {
-        url: process.env.DATABASE_URL,
+        url: databaseUrl,
       },
     },
   });

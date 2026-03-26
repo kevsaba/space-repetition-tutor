@@ -2,12 +2,18 @@
  * LLM Service Configuration
  *
  * Configuration management for LLM service.
+ * Uses runtime config (from setup wizard) or environment variables.
  */
 
+import {
+  getLLMApiUrl,
+  getLLMApiKey,
+  getLLMModel,
+} from '@/lib/config/runtime';
 import { DEFAULT_RETRY_CONFIG, type RetryConfig } from './types';
 
 /**
- * LLM configuration from environment variables
+ * LLM configuration from runtime config or environment variables
  */
 interface LLMConfig {
   url: string;
@@ -18,26 +24,24 @@ interface LLMConfig {
 }
 
 /**
- * Get LLM configuration from environment variables
+ * Get LLM configuration from runtime config or environment variables
+ *
+ * Supports OpenAI-compatible APIs including:
+ * - OpenAI (https://api.openai.com/v1)
+ * - LiteLLM proxies
+ * - Azure OpenAI
+ * - Any OpenAI-compatible provider
  */
 export function getLLMConfig(): LLMConfig {
-  let url = process.env.LLM_URL;
-  const apiKey = process.env.LLM_API_KEY;
-  const model = process.env.LLM_MODEL;
+  let url = getLLMApiUrl();
+  const apiKey = getLLMApiKey();
+  const model = getLLMModel();
 
-  if (!url) {
-    throw new Error('LLM_URL environment variable is not set');
-  }
   if (!apiKey) {
-    throw new Error('LLM_API_KEY environment variable is not set');
-  }
-  if (!model) {
-    throw new Error('LLM_MODEL environment variable is not set');
+    throw new Error('LLM_API_KEY not configured. Please run setup.');
   }
 
   // Ensure URL includes /chat/completions path for OpenAI-compatible APIs
-  // LLM_URL should be the base URL (e.g., https://api.openai.com/v1)
-  // We append /chat/completions if not already present
   if (!url.includes('/chat/completions')) {
     // Remove trailing slash if present, then append /chat/completions
     url = url.endsWith('/') ? `${url}chat/completions` : `${url}/chat/completions`;
@@ -47,7 +51,7 @@ export function getLLMConfig(): LLMConfig {
     url,
     apiKey,
     model,
-    timeout: parseInt(process.env.LLM_TIMEOUT || '30000', 10),
+    timeout: 30000,
     retry: DEFAULT_RETRY_CONFIG,
   };
 }
@@ -57,7 +61,7 @@ export function getLLMConfig(): LLMConfig {
  */
 export function validateLLMConfig(config: LLMConfig): void {
   if (!config.url.startsWith('https://') && !config.url.startsWith('http://')) {
-    throw new Error('LLM_URL must be a valid URL');
+    throw new Error('LLM_API_URL must be a valid URL');
   }
   if (config.apiKey.length < 10) {
     throw new Error('LLM_API_KEY appears to be invalid');
@@ -70,6 +74,7 @@ export function validateLLMConfig(config: LLMConfig): void {
   }
 }
 
-// Export singleton configuration
-export const llmConfig = getLLMConfig();
-validateLLMConfig(llmConfig);
+// Export a function to get fresh config (for runtime config changes)
+export function getFreshLLMConfig(): LLMConfig {
+  return getLLMConfig();
+}

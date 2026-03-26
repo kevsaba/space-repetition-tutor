@@ -2,6 +2,10 @@
 
 An AI-driven study companion that helps users prepare for technical interviews using spaced repetition and active recall.
 
+**[Self-hosted](#self-hosting) • [Open Source](#contributing) • [AI-Powered](#how-it-works)**
+
+---
+
 ## Overview
 
 This application uses the **Leitner System** (a proven spaced repetition algorithm) combined with **AI-generated feedback** to help you:
@@ -11,58 +15,148 @@ This application uses the **Leitner System** (a proven spaced repetition algorit
 - Get interview-ready feedback on your answers
 - Prepare for technical interviews effectively
 
-## Tech Stack
+---
 
-- **Frontend:** Next.js 14 (App Router), React, Tailwind CSS
-- **Backend:** Next.js API Routes (TypeScript)
-- **Database:** Supabase (PostgreSQL) + Prisma ORM
-- **LLM:** GPT-4o-mini via LiteLLM-compatible proxy
+## Features
 
-## Getting Started
+- 📚 **Leitner Spaced Repetition** - 3-box system for optimal learning intervals
+- 🤖 **AI-Powered Feedback** - Detailed evaluation of your answers
+- 🎯 **Interview Mode** - Structured preparation following career track topics
+- 📊 **Progress Dashboard** - Track your learning progress
+- 📤 **CSV/Excel Upload** - Bring your own questions
+- 🔧 **Fully Self-Hostable** - Use your own LLM and database
 
-### Prerequisites
+---
 
-- Node.js 20+ LTS
-- PostgreSQL database (or use Supabase)
+## Quick Start
 
-### Installation
+### Option 1: Docker (Recommended)
 
-1. Clone the repository:
+The easiest way to run the app locally:
+
 ```bash
-git clone git@github.com:kevsaba/space-repetition-tutor.git
+# Clone the repository
+git clone https://github.com/kevsaba/space-repetition-tutor.git
 cd space-repetition-tutor
-```
 
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Set up environment variables:
-```bash
+# Copy environment template
 cp .env.example .env
+
+# Edit .env with your configuration
+# Set your LLM_API_KEY and DATABASE_URL
+
+# Start with Docker
+docker-compose up -d
+
+# Run database migrations
+docker-compose exec app npx prisma migrate dev
+docker-compose exec app npx prisma db seed
+
+# Open http://localhost:3000
 ```
 
-Edit `.env` with your values:
-```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/spaced_repetition_tutor?schema=public"
-LLM_URL=https://aikeys.maibornwolff.de/v1
-LLM_API_KEY=your-api-key-here
-LLM_MODEL=gpt-4o-mini
-```
+### Option 2: Local Development
 
-4. Set up the database:
 ```bash
+# Clone the repository
+git clone https://github.com/kevsaba/space-repetition-tutor.git
+cd space-repetition-tutor
+
+# Install dependencies
+npm install
+
+# Copy environment template
+cp .env.example .env
+
+# Edit .env with your configuration
+```
+
+#### Required Environment Variables
+
+```env
+# Database
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/spaced_repetition_tutor?schema=public"
+DIRECT_URL="postgresql://postgres:postgres@localhost:5432/spaced_repetition_tutor"
+
+# LLM Configuration
+LLM_API_URL=https://api.openai.com/v1
+LLM_API_KEY=sk-your-api-key-here
+LLM_MODEL=gpt-4o-mini
+
+# Auth
+JWT_SECRET=generate-a-secure-random-string
+```
+
+#### Run the app
+
+```bash
+# Set up the database
 npx prisma migrate dev
 npx prisma db seed
-```
 
-5. Run the development server:
-```bash
+# Start development server
 npm run dev
+
+# Open http://localhost:3000
 ```
 
-6. Open [http://localhost:3000](http://localhost:3000)
+---
+
+## Self-Hosting
+
+This application is designed to be **fully self-hostable**. You provide:
+
+### 1. Database
+
+You can use any PostgreSQL-compatible database:
+
+| Option | Cost | Difficulty | Best For |
+|--------|------|------------|----------|
+| **Supabase** | Free tier available | Easy | Quick setup, managed |
+| **Local Postgres** | Free | Medium | Complete control |
+| **Railway/Render** | Free-$5/mo | Easy | Cloud deployment |
+
+#### Using Supabase (Recommended)
+
+1. Go to [supabase.com](https://supabase.com) and create a free account
+2. Create a new project
+3. Go to Settings → Database to get your connection strings
+4. Copy the **Connection String** (with pooling) as `DATABASE_URL`
+5. Copy the **Connection String** (without pooling) as `DIRECT_URL`
+
+#### Using Docker PostgreSQL
+
+The included `docker-compose.yml` has a PostgreSQL service:
+
+```bash
+docker-compose up -d postgres
+```
+
+### 2. LLM Provider
+
+The app uses **OpenAI-compatible APIs**. You can use:
+
+| Provider | Base URL | Notes |
+|----------|----------|-------|
+| **OpenAI** | `https://api.openai.com/v1` | Get API key from [platform.openai.com](https://platform.openai.com/api-keys) |
+| **LiteLLM** | Your proxy URL | Host your own proxy, switch between providers |
+| **Azure OpenAI** | Your Azure endpoint | Use your Azure OpenAI resource |
+| **Groq** | `https://api.groq.com/openai/v1` | Fast & free options |
+| **Together AI** | `https://api.together.xyz/v1` | Open source models |
+
+#### Setting up OpenAI
+
+1. Go to [platform.openai.com](https://platform.openai.com)
+2. Sign up or log in
+3. Create an API key
+4. Set in your `.env`:
+   ```env
+   LLM_API_URL=https://api.openai.com/v1
+   LLM_API_KEY=sk-your-key-here
+   LLM_MODEL=gpt-4o-mini
+   ```
+
+---
 
 ## Development
 
@@ -84,33 +178,38 @@ npm run test:watch       # Watch mode
 
 # Linting/Type Checking
 npm run lint             # ESLint
-npx tsc --noEmit         # Type check without emitting
+npx tsc --noEmit         # Type check
 
 # Building
 npm run build            # Production build
 ```
 
-## Project Structure
+### Project Structure
 
 ```
 space-repetition-tutor/
 ├── app/                    # Next.js App Router pages
 │   ├── api/               # API routes
+│   ├── dashboard/         # Dashboard page
 │   ├── login/             # Login page
 │   ├── signup/            # Signup page
-│   └── study/             # Study session page
+│   ├── study/             # Study session page
+│   └── upload/            # CSV/Excel upload page
 ├── components/            # React components
 ├── lib/                   # Core business logic
-│   ├── services/         # Business services (Leitner, Auth, etc.)
-│   └── contexts/         # React contexts
+│   ├── config/            # Environment configuration
+│   ├── contexts/          # React contexts
+│   ├── middleware/        # API middleware
+│   ├── prisma/            # Prisma client
+│   └── services/          # Business services
 ├── prisma/               # Database schema and migrations
 ├── prompts/              # LLM prompt templates
-├── docs/                 # Additional documentation
 ├── CLAUDE.md             # Project instructions for AI agents
-├── API.md                # API specification
 ├── ROADMAP.md            # Implementation roadmap
-└── PHASE_1_TASKS.md      # Phase 1 task breakdown
+└── README.md             # This file
 ```
+
+---
 
 ## How It Works
 
@@ -131,7 +230,9 @@ The app uses a 3-box Leitner system:
 ### Study Flow
 
 1. **Login** to your account
-2. **Fetch due questions** - prioritizes Box 1 → Box 2 → Box 3
+2. **Choose mode:**
+   - **FREE MODE** - Study any topic, Leitner system prioritizes weak areas
+   - **INTERVIEW MODE** - Follow structured career track order
 3. **Answer questions** - type your response
 4. **Get AI feedback** - detailed evaluation with:
    - What you got right
@@ -139,24 +240,63 @@ The app uses a 3-box Leitner system:
    - Corrections for misconceptions
    - Interview-ready answer
    - Memorable analogies
-   - Production insights
-5. **Box updates** - your progress is tracked automatically
-
-## Documentation
-
-- **CLAUDE.md** - Project instructions for AI agents
-- **API.md** - Complete API specification
-- **ROADMAP.md** - Phase-by-phase implementation plan
-- **PHASE_1_TASKS.md** - Detailed Phase 1 task breakdown
-
-## Contributing
-
-This project follows a multi-agent workflow with milestone-based execution. See `CLAUDE.md` for details.
-
-## License
-
-MIT
+5. **Follow-up questions** - Dive deeper into the topic
+6. **Progress tracked** - box levels update automatically
 
 ---
 
-**Status:** Early Development - Phase 1 (Foundation) in progress
+## Deployment
+
+### Deploy to Vercel
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Link your project
+vercel link
+
+# Set environment variables in Vercel dashboard
+# Then deploy
+vercel --prod
+```
+
+### Environment Variables for Production
+
+Set these in your hosting platform:
+
+```env
+DATABASE_URL="your-production-db-url"
+DIRECT_URL="your-production-db-direct-url"
+LLM_API_URL="https://api.openai.com/v1"
+LLM_API_KEY="your-production-api-key"
+LLM_MODEL="gpt-4o-mini"
+JWT_SECRET="your-production-jwt-secret"
+NODE_ENV="production"
+```
+
+---
+
+## Documentation
+
+- **[CLAUDE.md](CLAUDE.md)** - Project instructions for AI agents
+- **[ROADMAP.md](ROADMAP.md)** - Phase-by-phase implementation plan
+- **[API.md](API.md)** - Complete API specification
+
+---
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+---
+
+## License
+
+MIT License - feel free to fork and modify for your own use.
+
+---
+
+**Status:** Production Ready ✅
+
+*Built with Next.js 14, TypeScript, Prisma, and Tailwind CSS*

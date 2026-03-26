@@ -602,13 +602,228 @@ function inferTrack(topicName: string): 'JAVA' | 'PYTHON' | 'DISTRIBUTED_SYSTEMS
 }
 
 /**
+ * Result of adding questions to an existing career
+ */
+export interface AddQuestionsToCareerResult {
+  questionsAdded: number;
+  topicsCreated: number;
+  topicsAdded: number;
+}
+
+/**
+ * Add questions to an existing career from CSV/Excel upload.
+ *
+ * This function:
+ * 1. Verifies the user owns the career (via UserCareer)
+ * 2. For each extracted topic:
+ *    - Checks if topic already exists in DB (smart topic matching)
+ *    - If exists: Uses existing topic, adds questions to it
+ *    - If not exists: Creates new topic
+ * 3. Creates CareerTopic links for new topics (if not already linked)
+ * 4. Creates Question records with type="UPLOADED"
+ * 5. Creates UserQuestion records for the user (Box 1, due now)
+ *
+ * @param userId - User ID adding the questions
+ * @param careerId - Career ID to add questions to
+ * @param parsedData - Parsed CSV/Excel data with topics and questions
+ * @returns Questions added statistics
+ * @throws CareerError if user doesn't own the career or creation fails
+ */
+export async function addQuestionsToCareer(
+  userId: string,
+  careerId: string,
+  parsedData: PDFParseResult,
+): Promise<AddQuestionsToCareerResult> {
+  // Validate input
+  if (!parsedData.topics || parsedData.topics.length === 0) {
+    throw new CareerError('No topics found in uploaded file', 'NO_TOPICS_IN_UPLOAD');
+  }
+
+  const totalQuestions = parsedData.topics.reduce((sum, t) => sum + t.questions.length, 0);
+  if (totalQuestions === 0) {
+    throw new CareerError('No questions found in uploaded file', 'NO_QUESTIONS_IN_UPLOAD');
+  }
+
+  // Verify user exists
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new CareerError('User not found. Please log out and sign up again.', 'USER_NOT_FOUND');
+  }
+
+  // Verify career exists
+  const career = await prisma.career.findUnique({
+    where: { id: careerId },
+    include: {
+      careerTopics: {
+        select: {
+          topicId: true,
+        },
+      },
+    },
+  });
+
+  if (!career) {
+    throw new CareerError('Career not found', 'CAREER_NOT_FOUND');
+  }
+
+  // Verify user owns this career (via UserCareer)
+  const userCareer = await prisma.userCareer.findFirst({
+    where: {
+      userId,
+      careerId,
+    },
+  });
+
+  if (!userCareer) {
+    throw new CareerError('You do not have permission to add questions to this career', 'CAREER_NOT_OWNED');
+  }
+
+  try {
+    console.log('[addQuestionsToCareer] Starting for user:', userId, 'careerId:', careerId);
+
+    // Get existing topic IDs for this career
+    const existingTopicIds = new Set(career.careerTopics.map(ct => ct.topicId));
+
+    const topicMatches: Array<{
+      name: string;
+      matched: boolean;
+      matchedTo?: string;
+    }> = [];
+
+    let topicsCreated = 0;
+    let topicsAdded = 0;
+    let questionsAdded = 0;
+
+    // Process each topic
+    for (const parsedTopic of parsedData.topics) {
+      // Skip topics without questions
+      if (parsedTopic.questions.length === 0) {
+        continue;
+      }
+
+      // Smart topic matching
+      const matchResult = await findOrCreateTopic(parsedTopic.name, userId);
+
+      topicMatches.push({
+        name: parsedTopic.name,
+        matched: !matchResult.isNew,
+        matchedTo: matchResult.matchedTo,
+      });
+
+      if (matchResult.isNew) {
+        topicsCreated++;
+      }
+
+      // Create questions for this topic
+      const questions = await Promise.all(
+        parsedTopic.questions.map((question) =>
+          prisma.question.create({
+            data: {
+              content: question.content.trim(),
+              type: 'UPLOADED',
+              difficulty: 'MID',
+              topicId: matchResult.topicId,
+              isTemplate: false,
+              createdBy: userId,
+            },
+          })
+        )
+      );
+
+      questionsAdded += questions.length;
+
+      // Create UserQuestion records (Box 1, due now)
+      await Promise.all(
+        questions.map((question) =>
+          prisma.userQuestion.create({
+            data: {
+              userId,
+              questionId: question.id,
+              box: 1,
+              dueDate: new Date(),
+              streak: 0,
+            },
+          })
+        )
+      );
+
+      // Add topic to career if not already linked
+      if (!existingTopicIds.has(matchResult.topicId)) {
+        await prisma.careerTopic.create({
+          data: {
+            careerId,
+            topicId: matchResult.topicId,
+            order: career.careerTopics.length + topicsAdded + 1,
+          },
+        });
+        existingTopicIds.add(matchResult.topicId);
+        topicsAdded++;
+      }
+    }
+
+    return {
+      questionsAdded,
+      topicsCreated,
+      topicsAdded,
+    };
+  } catch (error) {
+    if (error instanceof CareerError) {
+      throw error;
+    }
+
+    console.error('Failed to add questions to career. Error details:', {
+      message: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : 'Unknown',
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
+    throw new CareerError(
+      `Failed to add questions to career: ${error instanceof Error ? error.message : String(error)}`,
+      'ADD_QUESTIONS_FAILED'
+    );
+  }
+}
+
+/**
+ * Get user's careers (both template careers they've selected and custom careers they've created).
+ *
+ * @param userId - User ID
+ * @returns List of user's careers with active status
+ */
+export async function getUserCareers(userId: string): Promise<
+  Array<{ id: string; name: string; description: string; isActive: boolean }>
+> {
+  const userCareers = await prisma.userCareer.findMany({
+    where: { userId },
+    include: {
+      career: true,
+    },
+    orderBy: {
+      startedAt: 'desc',
+    },
+  });
+
+  return userCareers.map((uc) => ({
+    id: uc.career.id,
+    name: uc.career.name,
+    description: uc.career.description || '',
+    isActive: uc.isActive,
+  }));
+}
+
+/**
  * CareerService interface for dependency injection
  */
 export const CareerService = {
   getAllCareers,
+  getUserCareers,
   selectCareer,
   getActiveCareer,
   createFromUpload,
+  addQuestionsToCareer,
 } as const;
 
 export type CareerService = typeof CareerService;

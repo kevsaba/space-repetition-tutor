@@ -299,7 +299,42 @@ REST API Design,What are idempotent HTTP methods?
 
 ---
 
-## Phase 6: Future Features (Out of Scope for v1)
+## Phase 6: Self-Hosted Setup ✅
+
+**Goal:** Make the application fully self-hostable with user-provided infrastructure.
+
+### What Was Completed
+
+| Task | Description | Status |
+|------|-------------|--------|
+| Environment variable validation | Created `lib/config/env.ts` for validating required variables | ✅ |
+| .env.example template | Comprehensive environment variable documentation | ✅ |
+| README with setup instructions | Complete setup guide for local development and deployment | ✅ |
+| Health check endpoint | `/api/health` endpoint that verifies DB and LLM connectivity | ✅ |
+| Docker setup | `Dockerfile` and `docker-compose.yml` for easy local development | ✅ |
+| Contributing guide | `CONTRIBUTING.md` with development guidelines | ✅ |
+
+### How to Self-Host
+
+Users can now run the application with their own infrastructure:
+
+1. **Database**: Use Supabase (free tier), local PostgreSQL, or any compatible database
+2. **LLM Provider**: Use OpenAI, LiteLLM proxy, Azure OpenAI, or any OpenAI-compatible API
+3. **Deployment**: Docker, Vercel, or any Node.js hosting platform
+
+### Files Added
+
+- `lib/config/env.ts` - Environment validation service
+- `app/api/health/route.ts` - Health check endpoint
+- `.env.example` - Environment variable template
+- `Dockerfile` - Production Docker image
+- `docker-compose.yml` - Local development with PostgreSQL
+- `CONTRIBUTING.md` - Contributing guidelines
+- Updated `README.md` - Complete setup guide
+
+---
+
+## Phase 7: Future Features (Out of Scope for v1)
 
 These features are planned for future versions and are NOT part of v1 MVP:
 
@@ -328,6 +363,8 @@ Phase 3 (Interview Mode) ← depends on Phase 1, Phase 2
 Phase 4 (Polish & Dashboard) ← depends on Phase 1, Phase 2, Phase 3
     ↓
 Phase 5 (CSV/Excel Upload) ← depends on Phase 1, Phase 3
+    ↓
+Phase 6 (Self-Hosted Setup) ← infrastructure improvement
 ```
 
 **Parallel Work Opportunities:**
@@ -345,6 +382,11 @@ Phase 5 (CSV/Excel Upload) ← depends on Phase 1, Phase 3
 |-------|---------------|----------------|-------------------|----------------|-------------|
 | Phase 1 | 7 | 5 | 1 | 4 | 17 |
 | Phase 2 | 7 | 3 | 0 | 3 | 13 |
+| Phase 3 | 6 | 4 | 0 | 3 | 13 |
+| Phase 4 | 3 | 3 | 0 | 2 | 8 |
+| Phase 5 | 6 | 4 | 0 | 4 | 14 |
+| Phase 6 | 2 | 0 | 1 | 0 | 3 |
+| **Total** | **31** | **19** | **2** | **16** | **68** |
 | Phase 3 | 6 | 4 | 0 | 3 | 13 |
 | Phase 4 | 3 | 3 | 0 | 2 | 8 |
 | Phase 5 | 6 | 4 | 0 | 4 | 14 |

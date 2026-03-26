@@ -7,6 +7,7 @@
  * - Box distribution (questions in each Leitner box)
  * - Review schedule explanation
  * - Quick links to start studying
+ * - Add questions manually or via CSV/Excel upload
  */
 
 import { useState, useEffect } from 'react';
@@ -14,6 +15,7 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { BoxDistributionCard } from '@/components/BoxDistributionCard';
 import { ReviewSchedule } from '@/components/ReviewSchedule';
+import { ManualQuestionForm } from '@/components/ManualQuestionForm';
 import Link from 'next/link';
 
 interface BoxDistribution {
@@ -66,6 +68,8 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [activeCareer, setActiveCareer] = useState<{ id: string; name: string } | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -78,8 +82,21 @@ export default function DashboardPage() {
   useEffect(() => {
     if (user) {
       fetchStats();
+      fetchActiveCareer();
     }
   }, [user]);
+
+  const fetchActiveCareer = async () => {
+    try {
+      const response = await fetch('/api/careers/active');
+      if (response.ok) {
+        const data = await response.json();
+        setActiveCareer(data.userCareer?.career || null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch active career:', err);
+    }
+  };
 
   const fetchStats = async () => {
     try {
@@ -134,6 +151,16 @@ export default function DashboardPage() {
                 className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Study
+              </Link>
+              <Link
+                href="/settings"
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Settings
               </Link>
               <button
                 onClick={() => router.push('/login')}
@@ -245,6 +272,67 @@ export default function DashboardPage() {
         {/* Review Schedule */}
         <div className="mb-8">
           <ReviewSchedule />
+        </div>
+
+        {/* Add Questions Section */}
+        <div className="mb-8">
+          <h3 className="text-xl font-semibold text-gray-900 mb-4">Add Questions</h3>
+          <div className="space-y-4">
+            {/* Manual Question Entry - Collapsible */}
+            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+              <button
+                onClick={() => setShowManualForm(!showManualForm)}
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </div>
+                  <div className="text-left">
+                    <h4 className="font-medium text-gray-900">Add Question Manually</h4>
+                    <p className="text-sm text-gray-500">Enter a single question with topic selection</p>
+                  </div>
+                </div>
+                <svg className={`w-5 h-5 text-gray-400 transition-transform ${showManualForm ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showManualForm && (
+                <div className="px-6 pb-6 border-t border-gray-100">
+                  <ManualQuestionForm
+                    onSuccess={() => {
+                      setShowManualForm(false);
+                      fetchStats();
+                      fetchActiveCareer();
+                    }}
+                    onCancel={() => setShowManualForm(false)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* CSV/Excel Upload - Link to dedicated page */}
+            <Link href="/upload" className="block bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
+              <div className="px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                  </div>
+                  <div className="text-left">
+                    <h4 className="font-medium text-gray-900">Upload CSV/Excel</h4>
+                    <p className="text-sm text-gray-500">Bulk upload multiple questions from a file</p>
+                  </div>
+                </div>
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </Link>
+          </div>
         </div>
 
         {/* Call to Action */}

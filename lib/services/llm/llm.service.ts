@@ -3,9 +3,12 @@
  *
  * Main service for interacting with the LLM API.
  * Provides methods for evaluating answers, generating questions, and generating follow-ups.
+ * Uses runtime config (from setup wizard) or environment variables.
  */
 
-import { llmConfig } from './config';
+import {
+  getFreshLLMConfig,
+} from './config';
 import {
   getEvaluateAnswerPrompt,
   getEvaluateFollowUpPrompt,
@@ -43,14 +46,20 @@ import type {
  * Handles all LLM API interactions with retry logic and validation.
  */
 export class LLMService {
-  constructor(private config = llmConfig) {}
+  /**
+   * Get fresh config for each operation (supports runtime config changes)
+   */
+  private getConfig() {
+    return getFreshLLMConfig();
+  }
 
   /**
    * Make a request to the LLM API
    */
   private async callLLM(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string> {
+    const config = this.getConfig();
     const request: LLMApiRequest = {
-      model: this.config.model,
+      model: config.model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         ...messages,
@@ -59,14 +68,14 @@ export class LLMService {
       max_tokens: 2000,
     };
 
-    const response = await fetch(this.config.url, {
+    const response = await fetch(config.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-litellm-api-key': this.config.apiKey,
+        'x-litellm-api-key': config.apiKey,
       },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(this.config.timeout),
+      signal: AbortSignal.timeout(config.timeout),
     });
 
     if (!response.ok) {
@@ -122,7 +131,7 @@ export class LLMService {
         }
         throw error;
       }
-    }, this.config.retry, 'evaluateAnswer');
+    }, this.getConfig().retry, 'evaluateAnswer');
   }
 
   /**
@@ -161,7 +170,7 @@ export class LLMService {
         }
         throw error;
       }
-    }, this.config.retry, 'generateQuestions');
+    }, this.getConfig().retry, 'generateQuestions');
   }
 
   /**
@@ -200,7 +209,7 @@ export class LLMService {
         }
         throw error;
       }
-    }, this.config.retry, 'generateFollowUp');
+    }, this.getConfig().retry, 'generateFollowUp');
   }
 
   /**
@@ -238,7 +247,7 @@ export class LLMService {
         }
         throw error;
       }
-    }, this.config.retry, 'evaluateFollowUp');
+    }, this.getConfig().retry, 'evaluateFollowUp');
   }
 }
 

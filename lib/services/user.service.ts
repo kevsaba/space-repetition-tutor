@@ -102,12 +102,36 @@ export async function getUserById(userId: string): Promise<User | null> {
 }
 
 /**
+ * Update user password.
+ *
+ * @param userId - User ID
+ * @param newPassword - New hashed password
+ * @returns Updated user
+ * @throws Error if user not found
+ */
+export async function updateUserPassword(userId: string, newPassword: string): Promise<User> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  return prisma.user.update({
+    where: { id: userId },
+    data: { password: newPassword },
+  });
+}
+
+/**
  * UserService interface for dependency injection
  */
 export const UserService = {
   registerUser,
   loginUser,
   getUserById,
+  updateUserPassword,
 } as const;
 
 export type UserService = typeof UserService;

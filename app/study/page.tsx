@@ -94,6 +94,7 @@ export default function StudyPage() {
   } | null>(null);
 
   const [studyState, setStudyState] = useState<StudyState>('loading');
+  const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
   const [feedback, setFeedback] = useState<{
     passed: boolean;
@@ -125,12 +126,34 @@ export default function StudyPage() {
     }
   }, [user, authLoading, router]);
 
-  // Fetch first question on mount
+  // Check if user wants to start in INTERVIEW mode (e.g., after upload)
   useEffect(() => {
-    if (user && !sessionId) {
-      fetchQuestions();
+    if (!authLoading && user && !sessionId) {
+      const startInInterviewMode = sessionStorage.getItem('startInInterviewMode');
+      if (startInInterviewMode === 'true') {
+        // Clear the flag so it doesn't persist
+        sessionStorage.removeItem('startInInterviewMode');
+        // Check if user has an active career
+        fetch('/api/careers/active').then(response => {
+          if (response.ok) {
+            setHasActiveCareer(true);
+            setStudyMode('INTERVIEW');
+            // Fetch questions in INTERVIEW mode
+            fetchQuestions('INTERVIEW');
+          } else {
+            // No active career, fall back to FREE mode
+            fetchQuestions('FREE');
+          }
+        }).catch(() => {
+          // Error checking, fall back to FREE mode
+          fetchQuestions('FREE');
+        });
+      } else {
+        // Default behavior - fetch questions in FREE mode
+        fetchQuestions('FREE');
+      }
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   // Check if user has an active career for interview mode
   // Only check on initial mount if in INTERVIEW mode, not on mode switch
@@ -186,8 +209,11 @@ export default function StudyPage() {
     setError('');
 
     const actualMode = mode || studyMode;
+    // Fetch more questions at once to avoid multiple round trips
+    // Use a higher limit for INTERVIEW mode to get all questions from current topic
+    const limit = actualMode === 'INTERVIEW' ? '10' : '1';
     const params = new URLSearchParams({
-      limit: '1',
+      limit,
       sessionId: sessionId || '',
       mode: actualMode,
     });
@@ -201,8 +227,18 @@ export default function StudyPage() {
       const data = await response.json();
 
       if (data.questions.length === 0) {
-        setStudyState('complete');
+        // No more questions - check if we have questions in queue
+        if (questionQueue.length > 0) {
+          // Get next question from queue
+          setCurrentQuestion(questionQueue[0]);
+          setQuestionQueue(questionQueue.slice(1));
+          setStudyState('question');
+        } else {
+          setStudyState('complete');
+        }
       } else {
+        // Add questions to queue (if we got multiple)
+        setQuestionQueue(data.questions.slice(1)); // Store remaining questions
         setCurrentQuestion(data.questions[0]);
         setSessionId(data.sessionId);
         setStudyState('question');
@@ -359,24 +395,40 @@ export default function StudyPage() {
       return;
     }
 
-    // After final feedback, fetch next question
+    // After final feedback, get next question from queue or fetch
     if (studyState === 'final_feedback') {
       setFeedback(null);
       setCurrentFollowUpIndex(0);
       setFollowUpResults([]);
       setCurrentFollowUpFeedback(null);
       setFinalResult(null);
-      setCurrentQuestion(null);
-      fetchQuestions();
+
+      // Check if we have questions in the queue first
+      if (questionQueue.length > 0) {
+        setCurrentQuestion(questionQueue[0]);
+        setQuestionQueue(questionQueue.slice(1));
+        setStudyState('question');
+      } else {
+        setCurrentQuestion(null);
+        fetchQuestions();
+      }
       return;
     }
 
-    // No follow-ups, fetch next question directly
+    // No follow-ups, get next question from queue or fetch
     if (studyState === 'feedback') {
       setFeedback(null);
       setCurrentFollowUpIndex(0);
-      setCurrentQuestion(null);
-      fetchQuestions();
+
+      // Check if we have questions in the queue first
+      if (questionQueue.length > 0) {
+        setCurrentQuestion(questionQueue[0]);
+        setQuestionQueue(questionQueue.slice(1));
+        setStudyState('question');
+      } else {
+        setCurrentQuestion(null);
+        fetchQuestions();
+      }
     }
   };
 
@@ -463,6 +515,17 @@ export default function StudyPage() {
                 onOpenChange={setIsCareerSelectorOpen}
                 className={studyMode === 'INTERVIEW' ? 'ring-2 ring-indigo-200' : ''}
               />
+              <Link
+                href="/settings"
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1"
+                title="Settings"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="hidden sm:inline">Settings</span>
+              </Link>
               <button
                 onClick={handleLogout}
                 className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -885,12 +948,12 @@ export default function StudyPage() {
               >
                 Start Practicing
               </button>
-              <button
-                onClick={() => router.push('/')}
+              <Link
+                href="/dashboard"
                 className="px-8 py-4 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
               >
-                Back to Home
-              </button>
+                Back to Dashboard
+              </Link>
             </div>
           </div>
         )}

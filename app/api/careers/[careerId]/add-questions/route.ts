@@ -1,20 +1,20 @@
 /**
- * POST /api/careers/upload
+ * POST /api/careers/:careerId/add-questions
  *
- * Upload a CSV/Excel file to create a custom career path.
+ * Upload a CSV/Excel file to add questions to an existing career path.
  *
  * Accepts:
  * - CSV file (multipart/form-data)
  * - Excel file (.xlsx) (multipart/form-data)
- * - careerName: User-provided name for their career path
  *
- * Returns: { careerId, topicsCreated, questionsAdded, topicMatches }
+ * Returns: { questionsAdded, topicsCreated, topicsAdded }
  *
  * Process:
- * 1. Parse CSV/Excel to extract topics and questions
- * 2. Smart match topics to existing database topics
- * 3. Create career with matched/new topics
- * 4. Add questions and make career active for user
+ * 1. Verify user owns the career
+ * 2. Parse CSV/Excel to extract topics and questions
+ * 3. Smart match topics to existing database topics
+ * 4. Add questions to topics
+ * 5. Link new topics to career if needed
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -29,33 +29,25 @@ import { ExcelParseError, ExcelParserService } from '@/lib/services/excel-parser
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 /**
- * Allowed MIME types for CSV/Excel upload
- */
-const ALLOWED_CONTENT_TYPES = [
-  'text/csv',
-  'application/csv',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-];
-
-/**
  * Allowed file extensions
  */
 const ALLOWED_EXTENSIONS = ['.csv', '.xlsx'];
 
 /**
- * POST handler for CSV/Excel upload
+ * POST handler for adding questions via CSV/Excel upload
  */
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ careerId: string }> }
+) {
   try {
     // Authenticate user
     const authResult = await authenticate(request);
+    const { careerId } = await params;
 
     // Parse multipart form data
     const formData = await request.formData();
-
     const file = formData.get('file') as File | null;
-    const careerName = formData.get('careerName') as string | null;
 
     // Validate file presence
     if (!file) {
@@ -65,32 +57,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate career name
-    if (!careerName || careerName.trim().length === 0) {
-      return NextResponse.json(
-        { error: { code: 'NO_NAME', message: 'Career name is required' } },
-        { status: 400 }
-      );
-    }
-
     // Validate file extension
     const fileName = file.name.toLowerCase();
     const hasAllowedExtension = ALLOWED_EXTENSIONS.some(ext => fileName.endsWith(ext));
 
     if (!hasAllowedExtension) {
-      return NextResponse.json(
-        {
-          error: {
-            code: 'INVALID_FILE_TYPE',
-            message: 'Only CSV and Excel (.xlsx) files are allowed',
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    // Validate content type (but allow .csv files with various MIME types)
-    if (file.type && !ALLOWED_CONTENT_TYPES.includes(file.type) && !fileName.endsWith('.csv')) {
       return NextResponse.json(
         {
           error: {
@@ -165,22 +136,17 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
-    // Create career from parsed data
-    const result = await CareerService.createFromUpload(
+    // Add questions to existing career
+    const result = await CareerService.addQuestionsToCareer(
       authResult.userId,
-      careerName,
+      careerId,
       parsedData
     );
 
     return NextResponse.json({
-      careerId: result.careerId,
-      careerName: careerName,
-      topicsCreated: result.topicsCreated,
       questionsAdded: result.questionsAdded,
-      topics: result.topicMatches.map((match) => ({
-        name: match.matchedTo || match.name,
-        questionsAdded: 0,
-      })),
+      topicsCreated: result.topicsCreated,
+      topicsAdded: result.topicsAdded,
     });
   } catch (error) {
     // Handle authentication errors
@@ -201,7 +167,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log unexpected errors
-    console.error('File upload error:', error);
+    console.error('Add questions error:', error);
 
     return NextResponse.json(
       { error: { code: 'INTERNAL_ERROR', message: 'An error occurred while processing the upload' } },

@@ -56,3 +56,6 @@ playwright/.cache/
 # Temporary files
 *.tmp
 *.temp
+
+# Runtime configuration (setup wizard)
+config/runtime.json

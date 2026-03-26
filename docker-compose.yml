@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: spaced_repetition_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: spaced_repetition_tutor
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Next.js Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spaced_repetition_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Database connection
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/spaced_repetition_tutor?schema=public"
+      DIRECT_URL: "postgresql://postgres:postgres@postgres:5432/spaced_repetition_tutor"
+
+      # LLM Configuration - Set your own values
+      # Get API key from https://platform.openai.com/api-keys
+      LLM_API_URL: "https://api.openai.com/v1"
+      LLM_API_KEY: "${LLM_API_KEY:-sk-your-api-key-here}"
+      LLM_MODEL: "gpt-4o-mini"
+
+      # App configuration
+      NODE_ENV: production
+      JWT_SECRET: "${JWT_SECRET:-change-this-in-production}"
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Mount prisma for migrations
+      - ./prisma:/app/prisma
+
+volumes:
+  postgres_data:
