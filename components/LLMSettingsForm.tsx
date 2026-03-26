@@ -27,20 +27,21 @@ import {
   Clock,
   Lock as LockIcon,
 } from 'lucide-react';
-
-type StoragePreference = 'session' | 'database';
+import { StoragePreference } from '@prisma/client';
 
 interface LLMConfig {
   storagePreference: StoragePreference;
   apiUrl: string;
   apiKey: string;
   model: string;
+  currentPassword?: string; // Required when saving with DATABASE storage
 }
 
 interface FormErrors {
   apiUrl?: string;
   apiKey?: string;
   model?: string;
+  currentPassword?: string;
   general?: string;
 }
 
@@ -56,18 +57,18 @@ const STORAGE_OPTIONS: Array<{
   disclaimer: string;
 }> = [
   {
-    value: 'session',
+    value: StoragePreference.SESSION,
     label: 'Session Only',
     icon: <Clock className="w-5 h-5" />,
     description: 'Stored temporarily in browser memory',
     disclaimer: 'Your credentials will be cleared when you close the browser. You will need to re-enter them next time.',
   },
   {
-    value: 'database',
+    value: StoragePreference.DATABASE,
     label: 'Encrypted Storage',
     icon: <LockIcon className="w-5 h-5" />,
-    description: 'Encrypted and stored securely',
-    disclaimer: 'Your credentials are encrypted with your password and stored in the database. Only you can access them.',
+    description: 'Encrypted with your password and stored securely',
+    disclaimer: 'Your credentials are encrypted with your password and stored in the database. Requires your current password to save.',
   },
 ];
 
@@ -93,16 +94,18 @@ const PRESETS: Array<{
 
 export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
   const [config, setConfig] = useState<LLMConfig>({
-    storagePreference: 'session',
+    storagePreference: StoragePreference.SESSION,
     apiUrl: '',
     apiKey: '',
     model: '',
+    currentPassword: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [successMessage, setSuccessMessage] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
 
   // Fetch current config on mount
   useEffect(() => {
@@ -117,10 +120,11 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
       }
       const data = await response.json();
       setConfig({
-        storagePreference: data.storagePreference || 'session',
-        apiUrl: data.apiUrl || '',
+        storagePreference: data.storagePreference || StoragePreference.SESSION,
+        apiUrl: '', // Don't pre-fill for security
         apiKey: '', // Don't pre-fill API key for security
-        model: data.model || '',
+        model: '', // Don't pre-fill for security
+        currentPassword: '', // Never pre-fill password
       });
     } catch (err) {
       console.error('Failed to fetch config:', err);
@@ -149,6 +153,11 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
       newErrors.model = 'Model is required';
     }
 
+    // Require current password when using DATABASE storage
+    if (config.storagePreference === StoragePreference.DATABASE && !config.currentPassword?.trim()) {
+      newErrors.currentPassword = 'Current password is required to save encrypted credentials';
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
@@ -160,7 +169,13 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
       const response = await fetch('/api/user/llm-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
+        body: JSON.stringify({
+          storagePreference: config.storagePreference,
+          apiUrl: config.apiUrl,
+          apiKey: config.apiKey,
+          model: config.model,
+          password: config.storagePreference === StoragePreference.DATABASE ? config.currentPassword : undefined,
+        }),
       });
 
       if (!response.ok) {
@@ -169,6 +184,14 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
       }
 
       setSuccessMessage('LLM settings saved successfully');
+      // Clear sensitive fields after save
+      setConfig({
+        ...config,
+        apiUrl: '',
+        apiKey: '',
+        model: '',
+        currentPassword: '',
+      });
       setTimeout(() => {
         setSuccessMessage('');
         onSuccess?.();
@@ -273,6 +296,41 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
       {/* Divider */}
       <div className="border-t border-gray-200" />
 
+      {/* Current Password - Required for DATABASE storage */}
+      {config.storagePreference === StoragePreference.DATABASE && (
+        <div className="max-w-2xl">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Current Password
+          </label>
+          <div className="relative">
+            <input
+              type={showCurrentPassword ? 'text' : 'password'}
+              value={config.currentPassword || ''}
+              onChange={(e) => setConfig({ ...config, currentPassword: e.target.value })}
+              placeholder="Enter your current password"
+              className={`w-full px-4 py-3 pr-12 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm ${
+                errors.currentPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}
+            >
+              {showCurrentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+            </button>
+          </div>
+          {errors.currentPassword && (
+            <p className="mt-1 text-sm text-red-600">{errors.currentPassword}</p>
+          )}
+          <p className="mt-1 text-xs text-gray-500 flex items-center gap-1">
+            <LockIcon className="w-3 h-3" />
+            Required to encrypt and save your credentials securely
+          </p>
+        </div>
+      )}
+
       {/* API URL */}
       <div className="space-y-4 max-w-2xl">
         <div>
@@ -322,7 +380,7 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
             <p className="mt-1 text-sm text-red-600">{errors.apiKey}</p>
           )}
           <p className="mt-1 text-xs text-gray-500">
-            {config.storagePreference === 'session'
+            {config.storagePreference === StoragePreference.SESSION
               ? 'Your key will be stored in browser session only.'
               : 'Your key will be encrypted and stored securely.'}
           </p>
