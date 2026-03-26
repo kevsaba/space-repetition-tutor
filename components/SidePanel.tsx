@@ -47,12 +47,12 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     name: 'Free Practice',
-    href: '/study',
+    href: '/free',
     icon: <BookOpen className="w-5 h-5" />,
   },
   {
     name: 'Interview Mode',
-    href: '/study?mode=INTERVIEW',
+    href: '/interview',
     icon: <FileUp className="w-5 h-5" />,
   },
   {
@@ -125,13 +125,6 @@ export function SidePanel({ username }: SidePanelProps) {
     return pathname.startsWith(href);
   };
 
-  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
-    // Set sessionStorage flag for Interview Mode navigation
-    if (href.includes('mode=INTERVIEW')) {
-      sessionStorage.setItem('startInInterviewMode', 'true');
-    }
-  };
-
   const displayUsername = username || user?.username || 'User';
 
   return (
@@ -191,7 +184,6 @@ export function SidePanel({ username }: SidePanelProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                onClick={(e) => handleNavClick(e, item.href)}
                 className={`
                   flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors
                   ${active
