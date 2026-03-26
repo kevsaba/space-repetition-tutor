@@ -115,12 +115,33 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
   const fetchConfig = async () => {
     try {
       const response = await fetch('/api/user/llm-config');
+
+      // Handle 404/NOT_FOUND gracefully - means user hasn't set up config yet
+      if (response.status === 404) {
+        setConfig({
+          storagePreference: StoragePreference.SESSION,
+          apiUrl: '',
+          apiKey: '',
+          model: '',
+          currentPassword: '',
+        });
+        setLoading(false);
+        return;
+      }
+
       if (!response.ok) {
         throw new Error('Failed to fetch LLM settings');
       }
+
       const data = await response.json();
+
+      // API returns data as { config: { ... } }
+      const configData = data.config;
+
+      // Initialize with default/empty values for security
+      // Only use the storage preference from the server, everything else is empty
       setConfig({
-        storagePreference: data.storagePreference || StoragePreference.SESSION,
+        storagePreference: configData?.storagePreference || StoragePreference.SESSION,
         apiUrl: '', // Don't pre-fill for security
         apiKey: '', // Don't pre-fill API key for security
         model: '', // Don't pre-fill for security
@@ -128,7 +149,14 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
       });
     } catch (err) {
       console.error('Failed to fetch config:', err);
-      setErrors({ general: 'Failed to load LLM settings' });
+      // Don't show error for first-time users (404 is expected)
+      // Only show error if it's a different type of error
+      const isNotFoundError =
+        err instanceof Error &&
+        'Failed to fetch LLM settings' !== err.message;
+      if (!isNotFoundError) {
+        setErrors({ general: 'Failed to load LLM settings' });
+      }
     } finally {
       setLoading(false);
     }

@@ -28,6 +28,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Brain,
+  PlusCircle,
+  Upload,
 } from 'lucide-react';
 
 interface NavItem {
@@ -52,6 +54,16 @@ const NAV_ITEMS: NavItem[] = [
     name: 'Interview Mode',
     href: '/study?mode=INTERVIEW',
     icon: <FileUp className="w-5 h-5" />,
+  },
+  {
+    name: 'Create Question',
+    href: '/create',
+    icon: <PlusCircle className="w-5 h-5" />,
+  },
+  {
+    name: 'Upload Questions',
+    href: '/upload',
+    icon: <Upload className="w-5 h-5" />,
   },
   {
     name: 'Settings',

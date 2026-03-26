@@ -15,7 +15,6 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { AuthenticatedLayout } from '@/components/AuthenticatedLayout';
 import { BoxDistributionCard } from '@/components/BoxDistributionCard';
 import { ReviewSchedule } from '@/components/ReviewSchedule';
-import { ManualQuestionForm } from '@/components/ManualQuestionForm';
 import Link from 'next/link';
 
 interface BoxDistribution {
@@ -67,7 +66,6 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showManualForm, setShowManualForm] = useState(false);
   const [activeCareer, setActiveCareer] = useState<{ id: string; name: string } | null>(null);
 
   // Fetch stats on mount
@@ -220,67 +218,6 @@ export default function DashboardPage() {
         {/* Review Schedule */}
         <div className="mb-8">
           <ReviewSchedule />
-        </div>
-
-        {/* Add Questions Section */}
-        <div className="mb-8">
-          <h3 className="text-xl font-semibold text-gray-900 mb-4">Add Questions</h3>
-          <div className="space-y-4">
-            {/* Manual Question Entry - Collapsible */}
-            <div className="bg-white rounded-lg shadow-md overflow-hidden">
-              <button
-                onClick={() => setShowManualForm(!showManualForm)}
-                className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </div>
-                  <div className="text-left">
-                    <h4 className="font-medium text-gray-900">Add Question Manually</h4>
-                    <p className="text-sm text-gray-500">Enter a single question with topic selection</p>
-                  </div>
-                </div>
-                <svg className={`w-5 h-5 text-gray-400 transition-transform ${showManualForm ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {showManualForm && (
-                <div className="px-6 pb-6 border-t border-gray-100">
-                  <ManualQuestionForm
-                    onSuccess={() => {
-                      setShowManualForm(false);
-                      fetchStats();
-                      fetchActiveCareer();
-                    }}
-                    onCancel={() => setShowManualForm(false)}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* CSV/Excel Upload - Link to dedicated page */}
-            <Link href="/upload" className="block bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-              <div className="px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                  </div>
-                  <div className="text-left">
-                    <h4 className="font-medium text-gray-900">Upload CSV/Excel</h4>
-                    <p className="text-sm text-gray-500">Bulk upload multiple questions from a file</p>
-                  </div>
-                </div>
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </Link>
-          </div>
         </div>
 
         {/* Call to Action */}

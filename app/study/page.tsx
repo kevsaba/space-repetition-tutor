@@ -122,32 +122,38 @@ export default function StudyPage() {
 
   // Check if user wants to start in INTERVIEW mode (e.g., after upload)
   useEffect(() => {
-    if (user && !sessionId) {
+    const initializeMode = async () => {
+      if (!user || sessionId) return;
+
       const startInInterviewMode = sessionStorage.getItem('startInInterviewMode');
       if (startInInterviewMode === 'true') {
         // Clear the flag so it doesn't persist
         sessionStorage.removeItem('startInInterviewMode');
         // Check if user has an active career
-        fetch('/api/careers/active').then(response => {
+        try {
+          const response = await fetch('/api/careers/active');
           if (response.ok) {
             setHasActiveCareer(true);
             setStudyMode('INTERVIEW');
             // Fetch questions in INTERVIEW mode
-            fetchQuestions('INTERVIEW');
+            await fetchQuestions('INTERVIEW');
           } else {
             // No active career, fall back to FREE mode
-            fetchQuestions('FREE');
+            await fetchQuestions('FREE');
           }
-        }).catch(() => {
+        } catch (err) {
           // Error checking, fall back to FREE mode
-          fetchQuestions('FREE');
-        });
+          console.error('Error checking active career:', err);
+          await fetchQuestions('FREE');
+        }
       } else {
         // Default behavior - fetch questions in FREE mode
-        fetchQuestions('FREE');
+        await fetchQuestions('FREE');
       }
-    }
-  }, [user]);
+    };
+
+    initializeMode();
+  }, [user, sessionId]);
 
   // Check if user has an active career for interview mode
   // Only check on initial mount if in INTERVIEW mode, not on mode switch
@@ -483,33 +489,48 @@ export default function StudyPage() {
 
   return (
     <AuthenticatedLayout>
-      {/* Top Controls Bar - Mode and Career Selection */}
-      <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
-        <div className="flex items-center justify-between gap-4">
+      {/* Top Controls Bar - Mode and Career Selection (INTERVIEW mode only) */}
+      {studyMode === 'INTERVIEW' && (
+        <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <ModeSelector
+                currentMode={studyMode}
+                onModeChange={handleModeChange}
+                hasActiveCareer={hasActiveCareer}
+              />
+              <CareerSelector
+                onCareerChange={handleCareerSelected}
+                studyMode={studyMode}
+                isOpen={isCareerSelectorOpen}
+                onOpenChange={setIsCareerSelectorOpen}
+                className="ring-2 ring-indigo-200"
+              />
+            </div>
+            {/* Compact Progress - Only show in INTERVIEW mode */}
+            {interviewProgress && (
+              <CompactProgress
+                currentTopicIndex={interviewProgress.currentTopicIndex}
+                totalTopics={interviewProgress.totalTopics}
+                currentTopicName={interviewProgress.currentTopicName}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* FREE mode header - simplified with just mode switcher */}
+      {studyMode === 'FREE' && (
+        <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <ModeSelector
               currentMode={studyMode}
               onModeChange={handleModeChange}
               hasActiveCareer={hasActiveCareer}
             />
-            <CareerSelector
-              onCareerChange={handleCareerSelected}
-              studyMode={studyMode}
-              isOpen={isCareerSelectorOpen}
-              onOpenChange={setIsCareerSelectorOpen}
-              className={studyMode === 'INTERVIEW' ? 'ring-2 ring-indigo-200' : ''}
-            />
           </div>
-          {/* Compact Progress - Only show in INTERVIEW mode */}
-          {studyMode === 'INTERVIEW' && interviewProgress && (
-            <CompactProgress
-              currentTopicIndex={interviewProgress.currentTopicIndex}
-              totalTopics={interviewProgress.totalTopics}
-              currentTopicName={interviewProgress.currentTopicName}
-            />
-          )}
         </div>
-      </div>
+      )}
 
       {/* Main Content */}
       <div className="px-8 py-8">
