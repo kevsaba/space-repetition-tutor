@@ -8,7 +8,9 @@
 
 import {
   getFreshLLMConfig,
+  getLLMConfigWithUserFallback,
 } from './config';
+import { LLMConfig } from './config';
 import {
   getEvaluateAnswerPrompt,
   getEvaluateFollowUpPrompt,
@@ -105,10 +107,10 @@ export class LLMService {
   /**
    * Make a request to the LLM API
    */
-  private async callLLM(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string> {
-    const config = this.getConfig();
+  private async callLLM(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>, config?: LLMConfig): Promise<string> {
+    const llmConfig = config || this.getConfig();
     const request: LLMApiRequest = {
-      model: config.model,
+      model: llmConfig.model,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         ...messages,
@@ -117,14 +119,14 @@ export class LLMService {
       max_tokens: 2000,
     };
 
-    const response = await fetch(config.url, {
+    const response = await fetch(llmConfig.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-litellm-api-key': config.apiKey,
+        'x-litellm-api-key': llmConfig.apiKey,
       },
       body: JSON.stringify(request),
-      signal: AbortSignal.timeout(config.timeout),
+      signal: AbortSignal.timeout(llmConfig.timeout),
     });
 
     if (!response.ok) {
@@ -152,17 +154,21 @@ export class LLMService {
    * @returns Structured feedback with pass/fail determination
    */
   async evaluateAnswer(input: EvaluateAnswerInput): Promise<LLMFeedbackResponse> {
+    const userConfig = await getLLMConfigWithUserFallback();
+    const strictness = userConfig.strictnessLevel || 'DEFAULT';
+
     const prompt = getEvaluateAnswerPrompt(
       input.question,
       input.userAnswer,
       input.currentBox,
+      strictness,
     );
 
     return withRetry(async () => {
       try {
         const content = await this.callLLM([
           { role: 'user', content: prompt },
-        ]);
+        ], userConfig);
 
         const parsed = extractJSON(content);
         return validateFeedbackResponse(parsed);
@@ -173,14 +179,14 @@ export class LLMService {
             { role: 'user', content: prompt },
             { role: 'assistant', content: error instanceof Error ? error.message : 'Invalid JSON' },
             { role: 'user', content: CLARIFYING_INSTRUCTION },
-          ]);
+          ], userConfig);
 
           const parsed = extractJSON(clarifiedContent);
           return validateFeedbackResponse(parsed);
         }
         throw error;
       }
-    }, this.getConfig().retry, 'evaluateAnswer');
+    }, userConfig.retry, 'evaluateAnswer');
   }
 
   /**
@@ -268,17 +274,21 @@ export class LLMService {
    * @returns Structured feedback with pass/fail determination
    */
   async evaluateFollowUp(input: EvaluateFollowUpInput): Promise<LLMFeedbackResponse> {
+    const userConfig = await getLLMConfigWithUserFallback();
+    const strictness = userConfig.strictnessLevel || 'DEFAULT';
+
     const prompt = getEvaluateFollowUpPrompt(
       input.originalQuestion,
       input.followUpQuestion,
       input.userAnswer,
+      strictness,
     );
 
     return withRetry(async () => {
       try {
         const content = await this.callLLM([
           { role: 'user', content: prompt },
-        ]);
+        ], userConfig);
 
         const parsed = extractJSON(content);
         return validateFeedbackResponse(parsed);
@@ -289,14 +299,14 @@ export class LLMService {
             { role: 'user', content: prompt },
             { role: 'assistant', content: error instanceof Error ? error.message : 'Invalid JSON' },
             { role: 'user', content: CLARIFYING_INSTRUCTION },
-          ]);
+          ], userConfig);
 
           const parsed = extractJSON(clarifiedContent);
           return validateFeedbackResponse(parsed);
         }
         throw error;
       }
-    }, this.getConfig().retry, 'evaluateFollowUp');
+    }, userConfig.retry, 'evaluateFollowUp');
   }
 }
 

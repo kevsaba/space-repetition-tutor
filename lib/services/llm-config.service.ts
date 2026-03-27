@@ -11,7 +11,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { encryptionService } from './encryption.service';
-import type { StoragePreference } from '@prisma/client';
+import type { StoragePreference, StrictnessLevel } from '@prisma/client';
 
 /**
  * User LLM configuration (without exposing the actual API key)
@@ -22,6 +22,7 @@ export interface UserLLMConfig {
   apiUrl: string;
   model: string;
   storagePreference: StoragePreference;
+  strictnessLevel: StrictnessLevel;
   hasApiKey: boolean; // true if API key is set (in DB or session)
   createdAt: Date;
   updatedAt: Date;
@@ -36,6 +37,7 @@ export interface SaveLLMConfigInput {
   apiKey?: string; // Optional - if not provided, keeps existing key
   model: string;
   storagePreference: StoragePreference;
+  strictnessLevel?: StrictnessLevel;
   password?: string; // Required for DATABASE storage with apiKey
 }
 
@@ -85,7 +87,7 @@ function validateModel(model: string): void {
  * @throws LLMConfigError if validation fails or password required but not provided
  */
 export async function saveUserLLMConfig(input: SaveLLMConfigInput): Promise<UserLLMConfig> {
-  const { userId, apiUrl, apiKey, model, storagePreference, password } = input;
+  const { userId, apiUrl, apiKey, model, storagePreference, strictnessLevel, password } = input;
 
   // Validate inputs
   validateApiUrl(apiUrl);
@@ -116,6 +118,9 @@ export async function saveUserLLMConfig(input: SaveLLMConfigInput): Promise<User
     apiKeyEncrypted = existing.apiKeyEncrypted;
   }
 
+  // Use provided strictness level or keep existing
+  const finalStrictnessLevel = strictnessLevel ?? existing?.strictnessLevel ?? 'DEFAULT';
+
   // Upsert the configuration
   const config = await prisma.userLlmConfig.upsert({
     where: { userId },
@@ -125,12 +130,14 @@ export async function saveUserLLMConfig(input: SaveLLMConfigInput): Promise<User
       apiKeyEncrypted,
       model,
       storagePreference,
+      strictnessLevel: finalStrictnessLevel,
     },
     update: {
       apiUrl,
       apiKeyEncrypted,
       model,
       storagePreference,
+      strictnessLevel: finalStrictnessLevel,
     },
   });
 
@@ -140,6 +147,7 @@ export async function saveUserLLMConfig(input: SaveLLMConfigInput): Promise<User
     apiUrl: config.apiUrl,
     model: config.model,
     storagePreference: config.storagePreference,
+    strictnessLevel: config.strictnessLevel,
     hasApiKey: storagePreference === 'SESSION' ? !!apiKey : !!apiKeyEncrypted,
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,
@@ -167,6 +175,7 @@ export async function getUserLLMConfig(userId: string): Promise<UserLLMConfig | 
     apiUrl: config.apiUrl,
     model: config.model,
     storagePreference: config.storagePreference,
+    strictnessLevel: config.strictnessLevel,
     hasApiKey: !!config.apiKeyEncrypted, // For SESSION, key is in cookie not DB
     createdAt: config.createdAt,
     updatedAt: config.updatedAt,

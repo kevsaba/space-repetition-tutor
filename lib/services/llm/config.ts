@@ -31,12 +31,13 @@ let tempTestConfig: {
 /**
  * LLM configuration from runtime config or environment variables
  */
-interface LLMConfig {
+export interface LLMConfig {
   url: string;
   apiKey: string;
   model: string;
   timeout: number;
   retry: RetryConfig;
+  strictnessLevel?: 'DEFAULT' | 'STRICT' | 'LENIENT';
 }
 
 /**
@@ -137,6 +138,7 @@ interface UserLLMDbConfig {
   apiUrl: string;
   apiKey: string;
   model: string;
+  strictnessLevel: 'DEFAULT' | 'STRICT' | 'LENIENT';
 }
 
 /**
@@ -180,6 +182,7 @@ export async function getUserLLMConfig(): Promise<UserLLMDbConfig | null> {
         apiUrl: userConfig.apiUrl,
         apiKey: tempKey,
         model: userConfig.model,
+        strictnessLevel: userConfig.strictnessLevel || 'DEFAULT',
       };
     } else {
       // For DATABASE storage, API key was decrypted on login and stored in temp cookie
@@ -191,6 +194,7 @@ export async function getUserLLMConfig(): Promise<UserLLMDbConfig | null> {
         apiUrl: userConfig.apiUrl,
         apiKey: tempKey,
         model: userConfig.model,
+        strictnessLevel: userConfig.strictnessLevel || 'DEFAULT',
       };
     }
   } catch (error) {
@@ -209,7 +213,7 @@ export async function getUserLLMConfig(): Promise<UserLLMDbConfig | null> {
  * @returns LLM configuration
  * @throws Error if user has not configured their LLM settings
  */
-export async function getLLMConfigWithUserFallback(): Promise<LLMConfig> {
+export async function getLLMConfigWithUserFallback(): Promise<LLMConfig & { strictnessLevel: 'DEFAULT' | 'STRICT' | 'LENIENT' }> {
   // Try user config first
   const userConfig = await getUserLLMConfig();
   if (userConfig) {
@@ -222,6 +226,7 @@ export async function getLLMConfigWithUserFallback(): Promise<LLMConfig> {
       url,
       apiKey: userConfig.apiKey,
       model: userConfig.model,
+      strictnessLevel: userConfig.strictnessLevel || 'DEFAULT',
       timeout: 30000,
       retry: DEFAULT_RETRY_CONFIG,
     };

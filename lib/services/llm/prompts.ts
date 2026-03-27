@@ -15,12 +15,9 @@ const EVALUATE_ANSWER_TEMPLATE = `You are an expert interviewer evaluating a can
 Question: {question}
 Candidate's Answer: {userAnswer}
 Current Box: {currentBox} (1 = struggling, 2 = improving, 3 = mastered)
+Strictness: {strictness}
 
-Evaluate based on:
-1. Technical accuracy
-2. Depth of understanding
-3. Ability to explain clearly
-4. Interview-ready articulation
+{strictnessGuidance}
 
 Respond in JSON format:
 {
@@ -34,9 +31,34 @@ Respond in JSON format:
     "analogy": "Memorable analogy or mnemonic",
     "productionInsight": "How this matters in real systems"
   }
-}
+}`;
 
-Be fair but rigorous. Box 1 requires basic understanding. Box 3 requires nuanced, senior-level articulation.`;
+/**
+ * Strictness guidance for evaluation
+ */
+const STRICTNESS_GUIDANCE = {
+  DEFAULT: `Evaluate based on a balanced standard:
+- The core concept MUST be correctly understood
+- Critical points MUST be covered (omitting important details should FAIL)
+- Minor wording issues are acceptable
+- Good explanations that miss some secondary details should PASS
+- Box 1 requires basic understanding. Box 3 requires nuanced, senior-level articulation.`,
+
+  STRICT: `Evaluate with high precision and rigor:
+- The core concept MUST be correctly understood
+- ALL important details MUST be covered
+- Communication should be clear, precise, and professional
+- Missing any critical point should FAIL
+- Incomplete or vague explanations should FAIL
+- Expects interview-ready articulation at all box levels.`,
+
+  LENIENT: `Evaluate with focus on core understanding:
+- The main concept MUST be correctly understood (this is non-negotiable)
+- Minor omissions of details are acceptable
+- Wording and communication style are secondary to conceptual understanding
+- If the answer demonstrates they know the topic and key concepts, it should PASS
+- Good for building confidence while still ensuring learning.`,
+};
 
 /**
  * Generate questions prompt template
@@ -100,12 +122,9 @@ const EVALUATE_FOLLOWUP_TEMPLATE = `You are an expert interviewer evaluating a c
 Original Question: {originalQuestion}
 Follow-up Question: {followUpQuestion}
 Candidate's Follow-up Answer: {userAnswer}
+Strictness: {strictness}
 
-Evaluate based on:
-1. Technical accuracy
-2. Depth of understanding
-3. Ability to explain clearly
-4. Interview-ready articulation
+{strictnessGuidance}
 
 Respond in JSON format:
 {
@@ -121,7 +140,7 @@ Respond in JSON format:
   }
 }
 
-Be fair but rigorous. Follow-ups test deeper understanding, so expect more nuanced answers than the original question.`;
+Follow-ups test deeper understanding, so expect more nuanced answers than the original question.`;
 
 /**
  * Substitute variables in a template
@@ -136,17 +155,28 @@ function substituteTemplate(template: string, variables: Record<string, string |
 }
 
 /**
+ * Get strictness guidance text
+ */
+export function getStrictnessGuidance(strictness: 'DEFAULT' | 'STRICT' | 'LENIENT'): string {
+  return STRICTNESS_GUIDANCE[strictness] || STRICTNESS_GUIDANCE.DEFAULT;
+}
+
+/**
  * Get evaluate answer prompt
  */
 export function getEvaluateAnswerPrompt(
   question: string,
   userAnswer: string,
   currentBox: number,
+  strictness: 'DEFAULT' | 'STRICT' | 'LENIENT' = 'DEFAULT',
 ): string {
+  const strictnessGuidance = getStrictnessGuidance(strictness);
   return substituteTemplate(EVALUATE_ANSWER_TEMPLATE, {
     question,
     userAnswer,
     currentBox,
+    strictness,
+    strictnessGuidance,
   });
 }
 
@@ -191,11 +221,15 @@ export function getEvaluateFollowUpPrompt(
   originalQuestion: string,
   followUpQuestion: string,
   userAnswer: string,
+  strictness: 'DEFAULT' | 'STRICT' | 'LENIENT' = 'DEFAULT',
 ): string {
+  const strictnessGuidance = getStrictnessGuidance(strictness);
   return substituteTemplate(EVALUATE_FOLLOWUP_TEMPLATE, {
     originalQuestion,
     followUpQuestion,
     userAnswer,
+    strictness,
+    strictnessGuidance,
   });
 }
 

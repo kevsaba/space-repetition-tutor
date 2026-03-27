@@ -29,13 +29,14 @@ import {
   Sparkles,
   XCircle,
 } from 'lucide-react';
-import { StoragePreference } from '@prisma/client';
+import { StoragePreference, StrictnessLevel } from '@prisma/client';
 
 interface LLMConfig {
   storagePreference: StoragePreference;
   apiUrl: string;
   apiKey: string;
   model: string;
+  strictnessLevel: StrictnessLevel;
   currentPassword?: string; // Required when saving with DATABASE storage
 }
 
@@ -74,6 +75,36 @@ const STORAGE_OPTIONS: Array<{
   },
 ];
 
+const STRICTNESS_OPTIONS: Array<{
+  value: StrictnessLevel;
+  label: string;
+  icon: React.ReactNode;
+  description: string;
+  detail: string;
+}> = [
+  {
+    value: StrictnessLevel.LENIENT,
+    label: 'Lenient',
+    icon: '😌',
+    description: 'Focus on core understanding',
+    detail: 'Evaluates based on the main concept being correct. Minor wording issues and lack of some details are acceptable. Good for building confidence.',
+  },
+  {
+    value: StrictnessLevel.DEFAULT,
+    label: 'Default',
+    icon: '🎯',
+    description: 'Balanced evaluation',
+    detail: 'Checks that the core concepts are correct and critical points are covered. Missing important details will result in failure. Recommended for most users.',
+  },
+  {
+    value: StrictnessLevel.STRICT,
+    label: 'Strict',
+    icon: '🏆',
+    description: 'Precise and comprehensive',
+    detail: 'Requires complete, well-articulated answers with all critical points. Expects senior-level communication and attention to detail. For interview preparation.',
+  },
+];
+
 const PRESETS: Array<{
   name: string;
   apiUrl: string;
@@ -100,6 +131,7 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
     apiUrl: '',
     apiKey: '',
     model: '',
+    strictnessLevel: StrictnessLevel.DEFAULT,
     currentPassword: '',
   });
   const [loading, setLoading] = useState(true);
@@ -128,6 +160,7 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
           apiUrl: '',
           apiKey: '',
           model: '',
+          strictnessLevel: StrictnessLevel.DEFAULT,
           currentPassword: '',
         });
         setLoading(false);
@@ -144,12 +177,13 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
       const configData = data.config;
 
       // Initialize with default/empty values for security
-      // Only use the storage preference from the server, everything else is empty
+      // Only use the storage preference and strictness level from the server
       setConfig({
         storagePreference: configData?.storagePreference || StoragePreference.SESSION,
         apiUrl: '', // Don't pre-fill for security
         apiKey: '', // Don't pre-fill API key for security
         model: '', // Don't pre-fill for security
+        strictnessLevel: configData?.strictnessLevel || StrictnessLevel.DEFAULT,
         currentPassword: '', // Never pre-fill password
       });
     } catch (err) {
@@ -232,6 +266,7 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
           apiUrl: config.apiUrl,
           apiKey: config.apiKey,
           model: config.model,
+          strictnessLevel: config.strictnessLevel,
           password: config.storagePreference === StoragePreference.DATABASE ? config.currentPassword : undefined,
         }),
       });
@@ -348,6 +383,51 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
                   <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
                   {option.disclaimer}
                 </p>
+              </div>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Strictness Level Selector */}
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Evaluation Strictness</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Choose how strictly the AI evaluates your answers. This affects whether you pass or fail each question.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {STRICTNESS_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className={`
+                relative flex items-start gap-4 p-4 border-2 rounded-lg cursor-pointer transition-all
+                ${config.strictnessLevel === option.value
+                  ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-500'
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
+                }
+              `}
+            >
+              <input
+                type="radio"
+                name="strictnessLevel"
+                value={option.value}
+                checked={config.strictnessLevel === option.value}
+                onChange={(e) => setConfig({ ...config, strictnessLevel: e.target.value as StrictnessLevel })}
+                className="mt-1 w-4 h-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-2xl">{option.icon}</span>
+                  <span className={`font-semibold ${config.strictnessLevel === option.value ? 'text-indigo-900' : 'text-gray-900'}`}>
+                    {option.label}
+                  </span>
+                  {config.strictnessLevel === option.value && (
+                    <Check className="w-5 h-5 text-indigo-600 ml-auto" />
+                  )}
+                </div>
+                <p className="text-sm font-medium text-gray-700 mb-1">{option.description}</p>
+                <p className="text-xs text-gray-500 leading-relaxed">{option.detail}</p>
               </div>
             </label>
           ))}

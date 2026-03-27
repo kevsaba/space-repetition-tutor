@@ -21,6 +21,7 @@ const llmConfigSchema = z.object({
   apiKey: z.string().optional(),
   model: z.string().min(1, 'Model is required'),
   storagePreference: z.enum(['SESSION', 'DATABASE']),
+  strictnessLevel: z.enum(['DEFAULT', 'STRICT', 'LENIENT']).optional(),
   password: z.string().optional(),
 });
 
@@ -73,6 +74,7 @@ export async function GET(request: NextRequest) {
         apiUrl: config.apiUrl,
         model: config.model,
         storagePreference: config.storagePreference,
+        strictnessLevel: config.strictnessLevel,
         hasApiKey: config.storagePreference === 'SESSION' ? hasSessionKey : config.hasApiKey,
         createdAt: config.createdAt,
         updatedAt: config.updatedAt,
@@ -149,6 +151,7 @@ export async function POST(request: NextRequest) {
       apiKey: validatedData.apiKey,
       model: validatedData.model,
       storagePreference: validatedData.storagePreference,
+      strictnessLevel: validatedData.strictnessLevel,
       password: validatedData.password,
     });
 
@@ -169,6 +172,7 @@ export async function POST(request: NextRequest) {
         apiUrl: config.apiUrl,
         model: config.model,
         storagePreference: config.storagePreference,
+        strictnessLevel: config.strictnessLevel,
         hasApiKey: config.hasApiKey,
         createdAt: config.createdAt,
         updatedAt: config.updatedAt,
