@@ -393,17 +393,39 @@ Every feature MUST include:
 ## Critical Rules Summary
 
 1. **🚨 ALL AGENTS MUST READ PLANNING_AGENT_PROMPT.md FIRST** - Before ANY action, read and understand your role
-2. **🚨 NEVER SKIP THE REVIEWER AGENT** - Milestone is NOT complete until Reviewer approves (see checklist below)
-3. **NEVER merge to main without user approval**
-3. **NEVER let LLM decide Leitner box transitions**
-4. **NEVER put business logic in controllers**
-5. **NEVER skip tests**
-6. **ALWAYS use type safety (no `any` escapes)**
-7. **ALWAYS handle context limits with handoffs**
-8. **ALWAYS work on feature branches, never main**
-9. **ALWAYS document violations in CLAUDE.md**
-10. **ALWAYS include acceptance criteria for every task** (prevents missing features)
-11. **REVIEWER MUST verify implementation against PLANNING_AGENT_PROMPT.md** (not just code quality)
+2. **🚨 MUST ENTER PLAN MODE FOR MULTI-FILE CHANGES** - Any implementation touching 3+ files MUST use EnterPlanMode first
+3. **🚨 NEVER SKIP THE REVIEWER AGENT** - Milestone is NOT complete until Reviewer approves (see checklist below)
+4. **NEVER merge to main without user approval**
+5. **NEVER let LLM decide Leitner box transitions**
+6. **NEVER put business logic in controllers**
+7. **NEVER skip tests**
+8. **ALWAYS use type safety (no `any` escapes)**
+9. **ALWAYS handle context limits with handoffs**
+10. **ALWAYS work on feature branches, never main**
+11. **ALWAYS document violations in CLAUDE.md**
+12. **ALWAYS include acceptance criteria for every task** (prevents missing features)
+13. **REVIEWER MUST verify implementation against PLANNING_AGENT_PROMPT.md** (not just code quality)
+
+---
+
+## MANDATORY PLAN MODE TRIGGER
+
+**You MUST call EnterPlanMode when ANY of these conditions are met:**
+
+1. **Multi-file implementation** (3 or more files to modify/create)
+2. **New feature addition** (not a simple bug fix)
+3. **Architectural changes** (affects multiple layers)
+4. **UI/UX changes** (affects user-facing behavior)
+5. **Database schema changes**
+6. **API endpoint changes** (new or modified endpoints)
+
+**Simple fixes that DON'T require Plan Mode:**
+- Single-line bug fixes
+- Typo corrections
+- Simple CSS adjustments
+- Adding a console.log for debugging
+
+**VIOLATION OF THIS RULE IS A CRITICAL FAILURE.**
 
 ---
 
@@ -443,6 +465,34 @@ Every feature MUST include:
 - New "MILESTONE COMPLETION CHECKLIST" added below
 
 **Rule update:** See "CRITICAL: MILESTONE COMPLETION CHECKLIST" below - this MUST be followed EVERY TIME, NO EXCEPTIONS.
+
+---
+
+### 2026-03-27 - DIRECT IMPLEMENTATION WITHOUT WORKFLOW (CRITICAL VIOLATION)
+
+**What happened:** Claude Code implemented "Free Practice Topic Selector" feature directly without following any workflow rules:
+- Did NOT read PLANNING_AGENT_PROMPT.md first
+- Did NOT enter Plan Mode for complex multi-file feature
+- Did NOT spawn Backend/Frontend/Reviewer agents
+- Did NOT create milestone with tasks
+- Did NOT get Reviewer approval
+- Directly modified 6 files and declared complete
+
+**Why it was wrong:**
+- VIOLATED agent initialization rule (rule #1: Read PLANNING_AGENT_PROMPT.md FIRST)
+- VIOLATED milestone-based execution rule ("ALL work proceeds in milestones")
+- VIOLATED reviewer gatekeeper rule (no milestone complete without Reviewer approval)
+- VIOLATED multi-file implementation rule (should spawn agents, not do directly)
+- User asked "was this reviewed test and approved?" - indicating expectation was NOT met
+- No functional testing performed
+- No review of code quality beyond type checking
+
+**How it was fixed:**
+- User caught the violation and demanded proper process
+- CLAUDE.md being updated with this violation and new rules
+- Implementation will be reviewed and tested via proper workflow
+
+**Rule update:** Added "MUST ENTER PLAN MODE" rule below - ANY implementation touching 3+ files MUST use Plan Mode.
 
 ---
 

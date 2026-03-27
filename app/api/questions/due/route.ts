@@ -7,6 +7,8 @@
  * - limit: Number of questions to return (default 5, max 20)
  * - mode: Session mode (FREE or INTERVIEW, default FREE)
  * - sessionId: Session ID for tracking (optional)
+ * - topicId: Filter by topic ID (optional, only for FREE mode)
+ * - excludeQuestionId: Exclude this question from results (for skip functionality)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -37,6 +39,10 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '5', 10);
     const mode = (searchParams.get('mode') || 'FREE') as 'FREE' | 'INTERVIEW';
     const sessionId = searchParams.get('sessionId') || undefined;
+    const topicId = searchParams.get('topicId') || undefined;
+    const excludeQuestionId = searchParams.get('excludeQuestionId') || undefined;
+    const forceNew = searchParams.get('forceNew') === 'true';
+    const difficulty = searchParams.get('difficulty') as 'JUNIOR' | 'MID' | 'SENIOR' | 'EXPERT' | undefined;
 
     // Validate limit
     if (limit < 1 || limit > 20) {
@@ -54,8 +60,32 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // topicId is only valid for FREE mode
+    if (topicId && mode !== 'FREE') {
+      return NextResponse.json(
+        { error: { code: 'INVALID_INPUT', message: 'Topic filter is only available in FREE mode' } },
+        { status: 400 },
+      );
+    }
+
+    // forceNew is only valid for FREE mode
+    if (forceNew && mode !== 'FREE') {
+      return NextResponse.json(
+        { error: { code: 'INVALID_INPUT', message: 'Force new is only available in FREE mode' } },
+        { status: 400 },
+      );
+    }
+
+    // Validate difficulty if provided
+    if (difficulty && !['JUNIOR', 'MID', 'SENIOR', 'EXPERT'].includes(difficulty)) {
+      return NextResponse.json(
+        { error: { code: 'INVALID_INPUT', message: 'Invalid difficulty level. Must be JUNIOR, MID, SENIOR, or EXPERT' } },
+        { status: 400 },
+      );
+    }
+
     // Fetch due questions
-    const result = await QuestionService.fetchDueQuestions(userId, mode, sessionId, limit);
+    const result = await QuestionService.fetchDueQuestions(userId, mode, sessionId, limit, topicId, excludeQuestionId, forceNew, difficulty);
 
     return NextResponse.json(result);
   } catch (error) {

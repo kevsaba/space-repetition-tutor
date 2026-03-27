@@ -80,6 +80,10 @@ export interface FetchDueQuestionsOutput {
  * @param mode - Session mode (FREE or INTERVIEW)
  * @param sessionId - Session ID (for tracking)
  * @param limit - Number of questions to return (default 5)
+ * @param topicId - Optional topic ID to filter questions (FREE mode only)
+ * @param excludeQuestionId - Optional question ID to exclude (for skip functionality)
+ * @param forceNew - Force LLM to generate new questions, bypassing templates
+ * @param difficulty - Optional difficulty level for forced new questions
  * @returns Due questions and availability flag
  */
 export async function fetchDueQuestions(
@@ -87,6 +91,10 @@ export async function fetchDueQuestions(
   mode: SessionMode = 'FREE',
   sessionId?: string,
   limit: number = 5,
+  topicId?: string,
+  excludeQuestionId?: string,
+  forceNew?: boolean,
+  difficulty?: QuestionDifficulty,
 ): Promise<FetchDueQuestionsOutput> {
   // INTERVIEW mode: Follow career topic order
   if (mode === 'INTERVIEW') {
@@ -94,25 +102,104 @@ export async function fetchDueQuestions(
   }
 
   // FREE mode: Use existing Leitner priority
-  return fetchFreeModeQuestions(userId, sessionId, limit);
+  return fetchFreeModeQuestions(userId, sessionId, limit, topicId, excludeQuestionId, forceNew, difficulty);
 }
 
 /**
  * Fetch questions for FREE mode (Leitner priority: Box 1 -> 2 -> 3)
+ *
+ * @param userId - User ID
+ * @param sessionId - Session ID for tracking
+ * @param limit - Number of questions to return
+ * @param topicId - Optional topic ID to filter questions
+ * @param excludeQuestionId - Optional question ID to exclude (for skip functionality)
+ * @param forceNew - Force LLM to generate new questions, bypassing templates
+ * @param difficulty - Optional difficulty level for forced new questions
  */
 async function fetchFreeModeQuestions(
   userId: string,
   sessionId: string | undefined,
   limit: number,
+  topicId?: string,
+  excludeQuestionId?: string,
+  forceNew?: boolean,
+  difficulty?: QuestionDifficulty,
 ): Promise<FetchDueQuestionsOutput> {
   const now = new Date();
 
+  // When forceNew is true, skip due questions and go straight to LLM generation
+  if (forceNew) {
+    // Get recently generated questions (in the last minute) to avoid duplicates
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000);
+    const recentQuestionIds = (
+      await prisma.question.findMany({
+        where: {
+          createdBy: userId,
+          createdAt: { gte: oneMinuteAgo },
+          ...(topicId && { topicId }),
+        },
+        select: { id: true },
+      })
+    ).map((q) => q.id);
+
+    const newQuestions = await generateQuestionsWithLLM(userId, limit, topicId, difficulty, recentQuestionIds);
+
+    // Create UserQuestion entries for new questions (Box 1, due now)
+    await prisma.userQuestion.createMany({
+      data: newQuestions.map((q) => ({
+        userId,
+        questionId: q.id,
+        box: 1,
+        dueDate: now,
+      })),
+      skipDuplicates: true,
+    });
+
+    // Fetch the newly created user questions
+    const newUserQuestions = await prisma.userQuestion.findMany({
+      where: {
+        userId,
+        questionId: { in: newQuestions.map((q) => q.id) },
+      },
+      include: {
+        question: {
+          include: {
+            topic: true,
+          },
+        },
+      },
+    });
+
+    return {
+      questions: mapToDueQuestions(newUserQuestions),
+      hasNewQuestionsAvailable: true, // LLM can always generate more
+      sessionId,
+    };
+  }
+
+  // Build where clause with optional topic filter
+  const whereClause: {
+    userId: string;
+    dueDate: { lte: Date };
+    question?: { topicId?: string };
+    id?: { not?: string };
+  } = {
+    userId,
+    dueDate: { lte: now },
+  };
+
+  if (topicId) {
+    whereClause.question = { topicId };
+  }
+
+  // Exclude a specific question (used when skipping)
+  if (excludeQuestionId) {
+    whereClause.id = { not: excludeQuestionId };
+  }
+
   // 1. Fetch due questions
   const dueUserQuestions = await prisma.userQuestion.findMany({
-    where: {
-      userId,
-      dueDate: { lte: now },
-    },
+    where: whereClause,
     include: {
       question: {
         include: {
@@ -139,7 +226,7 @@ async function fetchFreeModeQuestions(
 
   // 3. Not enough due questions? Fetch new ones
   const remaining = limit - dueUserQuestions.length;
-  const newQuestions = await fetchNewQuestions(userId, remaining);
+  const newQuestions = await fetchNewQuestions(userId, remaining, topicId, excludeQuestionId);
 
   // 4. Create UserQuestion entries for new questions (Box 1, due now)
   await prisma.userQuestion.createMany({
@@ -172,7 +259,7 @@ async function fetchFreeModeQuestions(
 
   return {
     questions: mapToDueQuestions(allQuestions),
-    hasNewQuestionsAvailable: await hasMoreNewQuestions(userId),
+    hasNewQuestionsAvailable: await hasMoreNewQuestions(userId, topicId, excludeQuestionId),
     sessionId,
   };
 }
@@ -541,11 +628,15 @@ async function generateQuestionsForTopic(
  *
  * @param userId - User ID
  * @param limit - Number of questions to fetch
+ * @param topicId - Optional topic ID to filter questions
+ * @param excludeQuestionId - Optional question ID to exclude (for skip functionality)
  * @returns New questions
  */
 async function fetchNewQuestions(
   userId: string,
   limit: number,
+  topicId?: string,
+  excludeQuestionId?: string,
 ): Promise<Question[]> {
   // Get question IDs the user has already seen
   const seenQuestionIds = (
@@ -555,12 +646,28 @@ async function fetchNewQuestions(
     })
   ).map((uq) => uq.questionId);
 
+  // Add excluded question to seen list so we don't fetch it
+  if (excludeQuestionId && !seenQuestionIds.includes(excludeQuestionId)) {
+    seenQuestionIds.push(excludeQuestionId);
+  }
+
+  // Build template query with optional topic filter
+  const templateWhere: {
+    isTemplate: boolean;
+    id: { notIn: string[] };
+    topicId?: string;
+  } = {
+    isTemplate: true,
+    id: { notIn: seenQuestionIds },
+  };
+
+  if (topicId) {
+    templateWhere.topicId = topicId;
+  }
+
   // First try: Fetch template questions the user hasn't seen
   const templateQuestions = await prisma.question.findMany({
-    where: {
-      isTemplate: true,
-      id: { notIn: seenQuestionIds },
-    },
+    where: templateWhere,
     take: limit,
   });
 
@@ -571,7 +678,7 @@ async function fetchNewQuestions(
 
   // Not enough templates? Generate new questions via LLM
   const remaining = limit - templateQuestions.length;
-  const generatedQuestions = await generateQuestionsWithLLM(userId, remaining);
+  const generatedQuestions = await generateQuestionsWithLLM(userId, remaining, topicId);
 
   return [...templateQuestions, ...generatedQuestions];
 }
@@ -581,13 +688,24 @@ async function fetchNewQuestions(
  *
  * @param userId - User ID
  * @param count - Number of questions to generate
+ * @param topicId - Optional topic ID to generate questions for
+ * @param difficulty - Optional difficulty level (overrides topic difficulty)
+ * @param excludeQuestionIds - Optional question IDs to exclude from results
  * @returns Generated questions
  */
 async function generateQuestionsWithLLM(
   userId: string,
   count: number,
+  topicId?: string,
+  difficulty?: QuestionDifficulty,
+  excludeQuestionIds?: string[],
 ): Promise<Question[]> {
   try {
+    // If topicId is provided, generate questions for that specific topic
+    if (topicId) {
+      return await generateQuestionsForSpecificTopic(userId, topicId, count, difficulty, excludeQuestionIds);
+    }
+
     // Get user's focus topics (or use default topics)
     const topics = await getUserFocusTopics(userId);
 
@@ -673,6 +791,81 @@ async function generateQuestionsWithLLM(
 }
 
 /**
+ * Generate questions for a specific topic.
+ *
+ * @param userId - User ID
+ * @param topicId - Topic ID
+ * @param count - Number of questions to generate
+ * @param difficulty - Optional difficulty level (overrides topic difficulty)
+ * @param excludeQuestionIds - Optional question IDs to exclude from results
+ * @returns Generated questions
+ */
+async function generateQuestionsForSpecificTopic(
+  userId: string,
+  topicId: string,
+  count: number,
+  difficulty?: QuestionDifficulty,
+  excludeQuestionIds?: string[],
+): Promise<Question[]> {
+  const topic = await prisma.topic.findUnique({
+    where: { id: topicId },
+  });
+
+  if (!topic) {
+    console.warn(`Topic ${topicId} not found`);
+    return [];
+  }
+
+  const generatedQuestions: Question[] = [];
+  // Use provided difficulty or fall back to topic difficulty
+  const questionDifficulty = (difficulty || topic.difficulty) as QuestionDifficulty;
+
+  // Map user-friendly difficulty names to LLM-friendly ones
+  const difficultyPrompt = {
+    JUNIOR: 'Junior / Easy level (1-2 years experience)',
+    MID: 'Mid-level / Medium (3-5 years experience)',
+    SENIOR: 'Senior / Hard level (5+ years experience)',
+    EXPERT: 'Expert level (deep technical knowledge, system design, architecture)',
+  };
+
+  try {
+    const response = await llmService.generateQuestions({
+      topic: topic.name,
+      difficulty: questionDifficulty,
+      type: 'CONCEPTUAL' as QuestionType,
+      count,
+      customPrompt: `Difficulty: ${difficultyPrompt[questionDifficulty]}`,
+    });
+
+    for (const q of response.questions) {
+      const question = await prisma.question.create({
+        data: {
+          content: q.content,
+          type: q.type,
+          difficulty: q.difficulty,
+          topicId: topic.id,
+          isTemplate: true,
+          createdBy: userId,
+          expectedTopics: q.expectedTopics,
+          hint: q.hint,
+        },
+      });
+
+      generatedQuestions.push(question);
+
+      // Stop if we have enough questions
+      if (generatedQuestions.length >= count) {
+        break;
+      }
+    }
+  } catch (error) {
+    console.error(`Failed to generate questions for topic ${topic.name}:`, error);
+  }
+
+  return generatedQuestions;
+}
+
+/**
  * Get user's focus topics for question generation.
  *
  * @param userId - User ID
@@ -725,9 +918,11 @@ async function getUserFocusTopics(
  * Check if there are more new questions available for the user.
  *
  * @param userId - User ID
+ * @param topicId - Optional topic ID to filter questions
+ * @param excludeQuestionId - Optional question ID to exclude (for skip functionality)
  * @returns True if more questions available
  */
-async function hasMoreNewQuestions(userId: string): Promise<boolean> {
+async function hasMoreNewQuestions(userId: string, topicId?: string, excludeQuestionId?: string): Promise<boolean> {
   const seenQuestionIds = (
     await prisma.userQuestion.findMany({
       where: { userId },
@@ -735,11 +930,26 @@ async function hasMoreNewQuestions(userId: string): Promise<boolean> {
     })
   ).map((uq) => uq.questionId);
 
+  // Add excluded question to seen list
+  if (excludeQuestionId && !seenQuestionIds.includes(excludeQuestionId)) {
+    seenQuestionIds.push(excludeQuestionId);
+  }
+
+  const whereClause: {
+    isTemplate: boolean;
+    id: { notIn: string[] };
+    topicId?: string;
+  } = {
+    isTemplate: true,
+    id: { notIn: seenQuestionIds },
+  };
+
+  if (topicId) {
+    whereClause.topicId = topicId;
+  }
+
   const availableTemplates = await prisma.question.count({
-    where: {
-      isTemplate: true,
-      id: { notIn: seenQuestionIds },
-    },
+    where: whereClause,
   });
 
   return availableTemplates > 0;

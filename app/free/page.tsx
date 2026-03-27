@@ -7,7 +7,7 @@
  * Users can practice questions without following a structured career track.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -15,6 +15,7 @@ import { AuthenticatedLayout } from '@/components/AuthenticatedLayout';
 import { QuestionDisplay } from '@/components/QuestionDisplay';
 import { AnswerInput } from '@/components/AnswerInput';
 import { FeedbackDisplay } from '@/components/FeedbackDisplay';
+import { TopicSelector } from '@/components/TopicSelector';
 
 interface Question {
   id: string;
@@ -96,24 +97,42 @@ export default function FreePracticePage() {
   const [error, setError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
 
+  // Topic selection state
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+
+  // Difficulty selection for "New Question" button
+  const [selectedDifficulty, setSelectedDifficulty] = useState<'JUNIOR' | 'MID' | 'SENIOR' | 'EXPERT'>('MID');
+  const [showDifficultySelector, setShowDifficultySelector] = useState(false);
+
+  // User-friendly difficulty labels
+  const difficultyLabels = {
+    JUNIOR: 'Easy',
+    MID: 'Medium',
+    SENIOR: 'Hard',
+    EXPERT: 'Expert',
+  };
+
   // Always in FREE mode
   const studyMode = 'FREE';
 
-  // Fetch questions on mount
-  useEffect(() => {
-    if (user && !sessionId) {
-      fetchQuestions();
-    }
-  }, [user, sessionId]);
-
-  const fetchQuestions = async () => {
+  // Fetch questions on mount - wrapped in useCallback to avoid stale closures
+  // Note: We use functional state update for questionQueue to avoid including it in dependencies
+  const fetchQuestions = useCallback(async (
+    excludeQuestionId?: string,
+    forceNew?: boolean,
+    forceDifficulty?: 'JUNIOR' | 'MID' | 'SENIOR' | 'EXPERT'
+  ) => {
     setStudyState('loading');
     setError('');
 
     const params = new URLSearchParams({
-      limit: '1',
+      limit: '5', // Fetch more questions to allow skipping
       sessionId: sessionId || '',
       mode: 'FREE',
+      ...(selectedTopicId && { topicId: selectedTopicId }),
+      ...(excludeQuestionId && { excludeQuestionId }), // Exclude current question when skipping
+      ...(forceNew && { forceNew: 'true' }), // Force LLM to generate new question
+      ...(forceDifficulty && { difficulty: forceDifficulty }), // Pass difficulty for new question
     });
 
     try {
@@ -125,13 +144,17 @@ export default function FreePracticePage() {
       const data = await response.json();
 
       if (data.questions.length === 0) {
-        if (questionQueue.length > 0) {
-          setCurrentQuestion(questionQueue[0]);
-          setQuestionQueue(questionQueue.slice(1));
-          setStudyState('question');
-        } else {
-          setStudyState('complete');
-        }
+        // Use functional update to avoid dependency on questionQueue
+        setQuestionQueue((prevQueue) => {
+          if (prevQueue.length > 0) {
+            setCurrentQuestion(prevQueue[0]);
+            setStudyState('question');
+            return prevQueue.slice(1);
+          } else {
+            setStudyState('complete');
+            return prevQueue;
+          }
+        });
       } else {
         setQuestionQueue(data.questions.slice(1));
         setCurrentQuestion(data.questions[0]);
@@ -144,7 +167,14 @@ export default function FreePracticePage() {
       setError('Failed to load questions. Please try again.');
       setStudyState('error');
     }
-  };
+  }, [sessionId, selectedTopicId]);
+
+  // Fetch questions on mount
+  useEffect(() => {
+    if (user && !sessionId) {
+      fetchQuestions();
+    }
+  }, [user, sessionId, fetchQuestions]);
 
   const handleSubmitAnswer = async (answer: string) => {
     if (!currentQuestion) return;
@@ -347,6 +377,29 @@ export default function FreePracticePage() {
     handleCompleteSession();
   };
 
+  const handleSkipQuestion = () => {
+    // Skip the current question without saving - just fetch the next one
+    const skippedQuestionId = currentQuestion?.id;
+    setCurrentQuestion(null);
+    fetchQuestions(skippedQuestionId);
+  };
+
+  const handleNewQuestion = (difficulty: 'JUNIOR' | 'MID' | 'SENIOR' | 'EXPERT' = selectedDifficulty) => {
+    // Force creation of a new question via LLM, bypassing templates
+    setSelectedDifficulty(difficulty);
+    setCurrentQuestion(null);
+    setShowDifficultySelector(false);
+    fetchQuestions(undefined, true, difficulty); // forceNew=true, pass difficulty
+  };
+
+  const handleTopicChange = (topicId: string | null) => {
+    setSelectedTopicId(topicId);
+    // Reset the session to force a new fetch with the selected topic
+    setSessionId(undefined);
+    setQuestionQueue([]);
+    setCurrentQuestion(null);
+  };
+
   if (!user) {
     return (
       <AuthenticatedLayout>
@@ -362,10 +415,15 @@ export default function FreePracticePage() {
 
   return (
     <AuthenticatedLayout>
-      {/* Simple Header - Just page title */}
+      {/* Header with Topic Selector */}
       <div className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
-        <h1 className="text-xl font-semibold text-gray-900">Free Practice</h1>
-        <p className="text-sm text-gray-500 mt-1">Explore topics at your own pace</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Free Practice</h1>
+            <p className="text-sm text-gray-500 mt-1">Explore topics at your own pace</p>
+          </div>
+          <TopicSelector onTopicChange={handleTopicChange} />
+        </div>
       </div>
 
       {/* Main Content */}
@@ -424,7 +482,15 @@ export default function FreePracticePage() {
         {studyState === 'question' && currentQuestion && (
           <div className="space-y-6">
             <QuestionDisplay question={currentQuestion} />
-            <AnswerInput onSubmit={handleSubmitAnswer} loading={false} />
+            <AnswerInput
+              onSubmit={handleSubmitAnswer}
+              onSkip={handleSkipQuestion}
+              onNewQuestion={handleNewQuestion}
+              showSkip={true}
+              showNewQuestion={true}
+              currentDifficulty={selectedDifficulty}
+              loading={false}
+            />
           </div>
         )}
 

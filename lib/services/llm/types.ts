@@ -7,7 +7,7 @@
 /**
  * Difficulty levels for questions
  */
-export type QuestionDifficulty = 'JUNIOR' | 'MID' | 'SENIOR';
+export type QuestionDifficulty = 'JUNIOR' | 'MID' | 'SENIOR' | 'EXPERT';
 
 /**
  * Question types
@@ -75,6 +75,7 @@ export interface GenerateQuestionsInput {
   difficulty: QuestionDifficulty;
   type: QuestionType;
   count?: number;
+  customPrompt?: string;
 }
 
 /**

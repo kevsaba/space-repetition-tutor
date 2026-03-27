@@ -188,13 +188,21 @@ export function getGenerateQuestionsPrompt(
   difficulty: string,
   type: string,
   count: number = 3,
+  customPrompt?: string,
 ): string {
-  return substituteTemplate(GENERATE_QUESTIONS_TEMPLATE, {
+  const basePrompt = substituteTemplate(GENERATE_QUESTIONS_TEMPLATE, {
     topic,
     difficulty,
     type,
     count,
   });
+
+  // Append custom prompt if provided (e.g., for specific difficulty guidance)
+  if (customPrompt) {
+    return `${basePrompt}\n\n${customPrompt}`;
+  }
+
+  return basePrompt;
 }
 
 /**

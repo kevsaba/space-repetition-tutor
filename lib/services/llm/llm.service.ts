@@ -201,6 +201,7 @@ export class LLMService {
       input.difficulty,
       input.type,
       input.count || 3,
+      input.customPrompt,
     );
 
     return withRetry(async () => {

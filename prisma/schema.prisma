@@ -179,6 +179,7 @@ enum Difficulty {
   JUNIOR
   MID
   SENIOR
+  EXPERT
 }
 
 enum SessionMode {
