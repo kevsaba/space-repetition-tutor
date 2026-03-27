@@ -19,6 +19,16 @@ import { prisma } from '@/lib/prisma';
 import { AuthService } from '@/lib/services/auth.service';
 
 /**
+ * Temporary config for testing LLM connection
+ * Used by the test endpoint before saving user config
+ */
+let tempTestConfig: {
+  url: string;
+  apiKey: string;
+  model: string;
+} | null = null;
+
+/**
  * LLM configuration from runtime config or environment variables
  */
 interface LLMConfig {
@@ -82,7 +92,42 @@ export function validateLLMConfig(config: LLMConfig): void {
 
 // Export a function to get fresh config (for runtime config changes)
 export function getFreshLLMConfig(): LLMConfig {
+  // Check for temp test config first (used during connection testing)
+  if (tempTestConfig) {
+    let url = tempTestConfig.url;
+    // Ensure URL includes /chat/completions path
+    if (!url.includes('/chat/completions')) {
+      url = url.endsWith('/') ? `${url}chat/completions` : `${url}/chat/completions`;
+    }
+    return {
+      url,
+      apiKey: tempTestConfig.apiKey,
+      model: tempTestConfig.model,
+      timeout: 30000,
+      retry: DEFAULT_RETRY_CONFIG,
+    };
+  }
+
   return getLLMConfig();
+}
+
+/**
+ * Set temporary LLM config for testing connection
+ * This is used before saving user config to validate credentials
+ */
+export function setTempLLMConfig(config: {
+  url: string;
+  apiKey: string;
+  model: string;
+}): void {
+  tempTestConfig = config;
+}
+
+/**
+ * Clear temporary LLM config after testing
+ */
+export function clearTempLLMConfig(): void {
+  tempTestConfig = null;
 }
 
 /**

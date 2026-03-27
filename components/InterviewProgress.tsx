@@ -127,8 +127,7 @@ export function CompactProgress({
     <div className={`flex items-center gap-3 ${className}`}>
       {currentTopicName && (
         <div className="hidden sm:block">
-          <span className="text-xs text-gray-500">Current:</span>
-          <span className="text-sm font-medium text-gray-900 ml-1">{currentTopicName}</span>
+          <span className="text-sm font-medium text-gray-900">{currentTopicName}</span>
         </div>
       )}
       <div className="flex items-center gap-2">

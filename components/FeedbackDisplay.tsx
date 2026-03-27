@@ -79,7 +79,12 @@ export function FeedbackDisplay({
   };
 
   const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('en-US', {
+    const dateObj = new Date(date);
+    // Check if date is invalid
+    if (isNaN(dateObj.getTime())) {
+      return 'Not yet scheduled';
+    }
+    return dateObj.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',

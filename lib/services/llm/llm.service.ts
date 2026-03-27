@@ -54,6 +54,55 @@ export class LLMService {
   }
 
   /**
+   * Test the LLM connection with a simple request
+   * Used to validate credentials before saving
+   */
+  async testConnection(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const config = this.getConfig();
+      const request: LLMApiRequest = {
+        model: config.model,
+        messages: [
+          { role: 'system', content: 'You are a helpful assistant.' },
+          { role: 'user', content: 'Respond with just "OK" to confirm connection.' },
+        ],
+        temperature: 0.1,
+        max_tokens: 10,
+      };
+
+      const response = await fetch(config.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-litellm-api-key': config.apiKey,
+        },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(15000), // 15 second timeout for test
+      });
+
+      if (!response.ok) {
+        const responseBody = await response.text();
+        return {
+          success: false,
+          error: `API error: ${response.status} ${response.statusText}`,
+        };
+      }
+
+      const data: LLMApiResponse = await response.json();
+      if (!data.choices || data.choices.length === 0) {
+        return { success: false, error: 'No response from API' };
+      }
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Connection failed',
+      };
+    }
+  }
+
+  /**
    * Make a request to the LLM API
    */
   private async callLLM(messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>): Promise<string> {
@@ -260,6 +309,7 @@ export const llmService = new LLMService();
  * LLMService interface for dependency injection
  */
 export const LLMServiceInterface = {
+  testConnection: () => llmService.testConnection(),
   evaluateAnswer: (input: EvaluateAnswerInput) => llmService.evaluateAnswer(input),
   evaluateFollowUp: (input: EvaluateFollowUpInput) => llmService.evaluateFollowUp(input),
   generateQuestions: (input: GenerateQuestionsInput) => llmService.generateQuestions(input),

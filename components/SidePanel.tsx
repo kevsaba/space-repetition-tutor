@@ -92,6 +92,8 @@ export function SidePanel({ username }: SidePanelProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [hasLLMConfig, setHasLLMConfig] = useState(false);
   const [checkingConfig, setCheckingConfig] = useState(true);
+  // Assume no config until proven otherwise - prevents button flash
+  const [hasConfirmedConfig, setHasConfirmedConfig] = useState(false);
 
   // Load collapsed state from localStorage
   useEffect(() => {
@@ -110,13 +112,16 @@ export function SidePanel({ username }: SidePanelProps) {
         const response = await fetch('/api/user/llm-config');
         if (response.ok) {
           setHasLLMConfig(true);
+          setHasConfirmedConfig(true);
         } else if (response.status === 404) {
           setHasLLMConfig(false);
+          setHasConfirmedConfig(true);
         }
       } catch (error) {
         console.error('Failed to check LLM config:', error);
         // On error, assume no config to be safe
         setHasLLMConfig(false);
+        setHasConfirmedConfig(true);
       } finally {
         setCheckingConfig(false);
       }
@@ -145,6 +150,34 @@ export function SidePanel({ username }: SidePanelProps) {
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Listen for LLM config save event and refresh
+  useEffect(() => {
+    const handleLLMConfigSaved = async () => {
+      // Refresh LLM config status
+      const checkLLMConfig = async () => {
+        try {
+          const response = await fetch('/api/user/llm-config');
+          if (response.ok) {
+            setHasLLMConfig(true);
+            setHasConfirmedConfig(true);
+          } else if (response.status === 404) {
+            setHasLLMConfig(false);
+            setHasConfirmedConfig(true);
+          }
+        } catch (error) {
+          console.error('Failed to refresh LLM config:', error);
+          setHasLLMConfig(false);
+          setHasConfirmedConfig(true);
+        }
+      };
+
+      await checkLLMConfig();
+    };
+
+    window.addEventListener('llm-config-saved', handleLLMConfigSaved);
+    return () => window.removeEventListener('llm-config-saved', handleLLMConfigSaved);
   }, []);
 
   const handleLogout = async () => {
@@ -214,7 +247,7 @@ export function SidePanel({ username }: SidePanelProps) {
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto overflow-x-hidden">
           {NAV_ITEMS.map((item) => {
             const active = isActive(item.href);
-            const isDisabled = item.requiresConfig && !hasLLMConfig && !checkingConfig;
+            const isDisabled = item.requiresConfig && !hasLLMConfig;
 
             if (isDisabled) {
               // Render as disabled button (not a link)

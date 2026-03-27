@@ -26,6 +26,8 @@ import {
   Database,
   Clock,
   Lock as LockIcon,
+  Sparkles,
+  XCircle,
 } from 'lucide-react';
 import { StoragePreference } from '@prisma/client';
 
@@ -102,10 +104,13 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [successMessage, setSuccessMessage] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  // Track current step for better feedback
+  const [currentStep, setCurrentStep] = useState<'idle' | 'testing' | 'saving' | 'success' | 'error'>('idle');
 
   // Fetch current config on mount
   useEffect(() => {
@@ -166,6 +171,7 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
     e.preventDefault();
     setErrors({});
     setSuccessMessage('');
+    setCurrentStep('idle');
 
     // Validate
     const newErrors: FormErrors = {};
@@ -192,8 +198,32 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
     }
 
     setSaving(true);
+    setTesting(true);
+    setCurrentStep('testing');
 
     try {
+      // First, validate the connection
+      const testResponse = await fetch('/api/user/llm-config/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiUrl: config.apiUrl,
+          apiKey: config.apiKey,
+          model: config.model,
+        }),
+      });
+
+      if (!testResponse.ok) {
+        const testData = await testResponse.json();
+        setCurrentStep('error');
+        throw new Error(testData.error?.message || 'LLM connection test failed. Check your VPN, API key, or endpoint URL.');
+      }
+
+      // Test passed, now save
+      setCurrentStep('saving');
+      setTesting(false);
+
+      // If test passed, save the config
       const response = await fetch('/api/user/llm-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -208,10 +238,16 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
 
       if (!response.ok) {
         const data = await response.json();
+        setCurrentStep('error');
         throw new Error(data.error?.message || 'Failed to save LLM settings');
       }
 
-      setSuccessMessage('LLM settings saved successfully');
+      setCurrentStep('success');
+      setSuccessMessage('LLM settings saved and validated successfully');
+
+      // Trigger event to refresh side panel
+      window.dispatchEvent(new CustomEvent('llm-config-saved'));
+
       // Clear sensitive fields after save
       setConfig({
         ...config,
@@ -222,15 +258,28 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
       });
       setTimeout(() => {
         setSuccessMessage('');
+        setCurrentStep('idle');
         onSuccess?.();
-      }, 1500);
+      }, 2000);
     } catch (err) {
+      setCurrentStep('error');
       setErrors({
         general: err instanceof Error ? err.message : 'Failed to save LLM settings',
       });
     } finally {
       setSaving(false);
+      setTesting(false);
     }
+  };
+
+  // Helper function to get status banner classes
+  const getStatusBannerClasses = () => {
+    const base = 'border rounded-lg px-4 py-3 flex items-center gap-3 ';
+    if (currentStep === 'testing') return base + 'bg-blue-50 border-blue-200 text-blue-700';
+    if (currentStep === 'saving') return base + 'bg-purple-50 border-purple-200 text-purple-700';
+    if (currentStep === 'success' || successMessage) return base + 'bg-green-50 border-green-200 text-green-700';
+    if (currentStep === 'error' || errors.general) return base + 'bg-red-50 border-red-200 text-red-700';
+    return base;
   };
 
   const handlePresetClick = (preset: typeof PRESETS[0]) => {
@@ -305,19 +354,48 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
         </div>
       </div>
 
-      {/* Success Message */}
-      {successMessage && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center gap-2">
-          <Check className="w-5 h-5" />
-          {successMessage}
-        </div>
-      )}
-
-      {/* General Error */}
-      {errors.general && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
-          <AlertCircle className="w-5 h-5" />
-          {errors.general}
+      {/* Status Banner - Shows testing/saving/success/error states */}
+      {(currentStep !== 'idle' || successMessage || errors.general) && (
+        <div className={getStatusBannerClasses()}>
+          {currentStep === 'testing' && (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <div>
+                <p className="font-medium">Testing LLM Connection...</p>
+                <p className="text-sm opacity-80">Validating your API credentials</p>
+              </div>
+            </>
+          )}
+          {currentStep === 'saving' && (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <div>
+                <p className="font-medium">Saving Settings...</p>
+                <p className="text-sm opacity-80">Almost there</p>
+              </div>
+            </>
+          )}
+          {currentStep === 'success' && (
+            <>
+              <Check className="w-5 h-5" />
+              <div>
+                <p className="font-medium flex items-center gap-2">
+                  All Green!
+                  <Sparkles className="w-4 h-4" />
+                </p>
+                <p className="text-sm opacity-80">Your LLM is configured and ready to use</p>
+              </div>
+            </>
+          )}
+          {(currentStep === 'error' || errors.general) && !successMessage && (
+            <>
+              <XCircle className="w-5 h-5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium">Connection Failed</p>
+                <p className="text-sm opacity-80">{errors.general || 'Please check your settings and try again'}</p>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -462,7 +540,12 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
           disabled={saving}
           className="px-6 py-2.5 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
-          {saving ? (
+          {testing ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Testing Connection...
+            </>
+          ) : saving ? (
             <>
               <Loader2 className="w-4 h-4 animate-spin" />
               Saving...

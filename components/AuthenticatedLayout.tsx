@@ -37,6 +37,8 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   const pathname = usePathname();
   const [setupChecking, setSetupChecking] = useState(true);
   const [hasLLMConfig, setHasLLMConfig] = useState(false);
+  // Assume no config until confirmed - prevents UI flash
+  const [hasConfirmedConfig, setHasConfirmedConfig] = useState(false);
   const [funMessage] = useState(() =>
     FUN_MESSAGES[Math.floor(Math.random() * FUN_MESSAGES.length)]
   );
@@ -50,13 +52,16 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
         const response = await fetch('/api/user/llm-config');
         if (response.ok) {
           setHasLLMConfig(true);
+          setHasConfirmedConfig(true);
         } else if (response.status === 404) {
           setHasLLMConfig(false);
+          setHasConfirmedConfig(true);
         }
       } catch (error) {
         console.error('Failed to check LLM config:', error);
-        // On error, allow access (don't block)
-        setHasLLMConfig(true);
+        // On error, block access to be safe
+        setHasLLMConfig(false);
+        setHasConfirmedConfig(true);
       } finally {
         setSetupChecking(false);
       }
@@ -64,6 +69,33 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
 
     checkLLMConfig();
   }, [user, authLoading]);
+
+  // Listen for LLM config save event and refresh
+  useEffect(() => {
+    const handleLLMConfigSaved = async () => {
+      const checkLLMConfig = async () => {
+        try {
+          const response = await fetch('/api/user/llm-config');
+          if (response.ok) {
+            setHasLLMConfig(true);
+            setHasConfirmedConfig(true);
+          } else if (response.status === 404) {
+            setHasLLMConfig(false);
+            setHasConfirmedConfig(true);
+          }
+        } catch (error) {
+          console.error('Failed to refresh LLM config:', error);
+          setHasLLMConfig(false);
+          setHasConfirmedConfig(true);
+        }
+      };
+
+      await checkLLMConfig();
+    };
+
+    window.addEventListener('llm-config-saved', handleLLMConfigSaved);
+    return () => window.removeEventListener('llm-config-saved', handleLLMConfigSaved);
+  }, []);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -90,7 +122,8 @@ export function AuthenticatedLayout({ children }: AuthenticatedLayoutProps) {
   }
 
   // If user doesn't have LLM config and not on settings page, show setup required message
-  const needsSetup = !hasLLMConfig && pathname !== '/settings';
+  // Only check after we've confirmed the config status (prevents flash)
+  const needsSetup = hasConfirmedConfig && !hasLLMConfig && pathname !== '/settings';
 
   return (
     <SidePanelLayout>

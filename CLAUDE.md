@@ -4,6 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## CRITICAL: AGENT INITIALIZATION
+
+**ALL AGENTS (Supervisor, Backend, Frontend, Reviewer) MUST follow this initialization sequence IMMEDIATELY upon being spawned:**
+
+1. **READ `PLANNING_AGENT_PROMPT.md` FIRST** - Before taking any action
+2. **Understand your role** as defined in that document
+3. **Identify your specific responsibilities** for your agent type
+4. **ONLY THEN proceed** with your assigned tasks
+
+**This rule applies EVERY TIME an agent is spawned, including:**
+- First spawn in a conversation
+- Re-spawn after context limit
+- Any Task tool invocation with subagent_type
+
+**VIOLATION OF THIS RULE IS A CRITICAL FAILURE.**
+
+If you are an agent and have NOT read `PLANNING_AGENT_PROMPT.md` yet, STOP and read it NOW.
+
+---
+
 ## Project Overview
 
 **Space Repetition Tutor** - An AI-driven study companion that helps users prepare for technical interviews using spaced repetition and active recall.
@@ -302,6 +322,7 @@ When an agent approaches context limit (80% threshold):
    ```
 
 **Common violations to watch for:**
+- Agent taking action without reading PLANNING_AGENT_PROMPT.md first
 - Merging to main without user approval
 - Merging without Reviewer approval
 - Skipping tests
@@ -371,8 +392,9 @@ Every feature MUST include:
 
 ## Critical Rules Summary
 
-1. **🚨 NEVER SKIP THE REVIEWER AGENT** - Milestone is NOT complete until Reviewer approves (see checklist below)
-2. **NEVER merge to main without user approval**
+1. **🚨 ALL AGENTS MUST READ PLANNING_AGENT_PROMPT.md FIRST** - Before ANY action, read and understand your role
+2. **🚨 NEVER SKIP THE REVIEWER AGENT** - Milestone is NOT complete until Reviewer approves (see checklist below)
+3. **NEVER merge to main without user approval**
 3. **NEVER let LLM decide Leitner box transitions**
 4. **NEVER put business logic in controllers**
 5. **NEVER skip tests**
