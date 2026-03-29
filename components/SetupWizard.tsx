@@ -19,7 +19,6 @@ interface SetupWizardProps {
 
 interface FormErrors {
   databaseUrl?: string;
-  directUrl?: string;
   apiUrl?: string;
   apiKey?: string;
   model?: string;
@@ -44,10 +43,22 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     llm: boolean;
   } | null>(null);
 
+  // Helper function to derive direct URL from database URL
+  const deriveDirectUrl = (dbUrl: string): string => {
+    // For Supabase pooler URLs, convert to direct connection
+    if (dbUrl.includes('pooler.supabase.com')) {
+      return dbUrl
+        .replace(':6543/', ':5432/')
+        .replace('?pgbouncer=true', '')
+        .replace('&pgbouncer=true', '');
+    }
+    // For other databases, use the same URL
+    return dbUrl;
+  };
+
   // Form state
   const [formData, setFormData] = useState({
     databaseUrl: '',
-    directUrl: '',
     apiUrl: 'https://api.openai.com/v1',
     apiKey: '',
     model: 'gpt-4o-mini',
@@ -69,9 +80,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       const newErrors: FormErrors = {};
       if (!formData.databaseUrl.trim()) {
         newErrors.databaseUrl = 'Database URL is required';
-      }
-      if (!formData.directUrl.trim()) {
-        newErrors.directUrl = 'Direct URL is required';
       }
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
@@ -123,6 +131,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     setValidationResult(null);
 
     const results = { database: false, llm: false };
+    const directUrl = deriveDirectUrl(formData.databaseUrl);
 
     try {
       const response = await fetch('/api/setup/validate', {
@@ -132,7 +141,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           type: 'database',
           config: {
             databaseUrl: formData.databaseUrl,
-            directUrl: formData.directUrl,
+            directUrl: directUrl,
           },
         }),
       });
@@ -181,13 +190,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
   const saveConfiguration = async () => {
     try {
+      const directUrl = deriveDirectUrl(formData.databaseUrl);
       const response = await fetch('/api/setup/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           database: {
             url: formData.databaseUrl,
-            directUrl: formData.directUrl,
+            directUrl: directUrl,
           },
           llm: {
             apiUrl: formData.apiUrl,
@@ -281,13 +291,16 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 in just a few steps.
               </p>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800 max-w-md mx-auto">
-                <p className="font-medium mb-1">
+                <p className="font-medium mb-2">
                   <strong>You will need:</strong>
                 </p>
-                <ul className="text-left space-y-1 ml-4">
-                  <li>A PostgreSQL database (local or Supabase)</li>
-                  <li>An LLM API key (OpenAI, Groq, or compatible)</li>
+                <ul className="text-left space-y-2 ml-4">
+                  <li>✓ <strong>One</strong> PostgreSQL connection string (we'll handle the rest)</li>
+                  <li>✓ An LLM API key (OpenAI, Groq, or compatible)</li>
                 </ul>
+                <p className="mt-3 text-xs text-blue-700">
+                  <strong>Supabase users:</strong> Just paste either connection string from your dashboard. We'll auto-generate the other.
+                </p>
               </div>
             </div>
           )}
@@ -318,26 +331,10 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                   {getErrorForField('databaseUrl') && (
                     <p className="mt-1 text-sm text-red-600">{getErrorForField('databaseUrl')}</p>
                   )}
-                  <p className="mt-1 text-xs text-gray-500">
-                    Include connection pooling parameters if using Supabase
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Direct Connection String (for migrations)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.directUrl}
-                    onChange={(e) => setFormData({ ...formData, directUrl: e.target.value })}
-                    placeholder="postgresql://postgres:postgres@localhost:5432/spaced_repetition_tutor"
-                    className={'w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ' +
-                      (getErrorForField('directUrl') ? 'border-red-300 bg-red-50' : 'border-gray-300')
-                    }
-                  />
-                  {getErrorForField('directUrl') && (
-                    <p className="mt-1 text-sm text-red-600">{getErrorForField('directUrl')}</p>
+                  {formData.databaseUrl.includes('pooler.supabase.com') && (
+                    <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
+                      <span className="font-medium">Supabase detected!</span> Direct connection will be auto-generated.
+                    </p>
                   )}
                 </div>
 
@@ -350,33 +347,36 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                       onClick={() => {
                         setFormData({
                           ...formData,
-                          databaseUrl: 'postgresql://postgres:postgres@host.docker.internal:5432/spaced_repetition_tutor?schema=public',
-                          directUrl: 'postgresql://postgres:postgres@host.docker.internal:5432/spaced_repetition_tutor',
+                          databaseUrl: 'postgresql://postgres:postgres@host.docker.internal:5432/spaced_repetition_tutor',
                         });
                       }}
                       className="block w-full text-left px-3 py-2 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
                     >
                       <div className="font-medium text-gray-900">Local PostgreSQL (Docker)</div>
-                      <div className="text-gray-500 text-xs">postgresql://postgres:postgres@host.docker.internal:5432/...</div>
+                      <div className="text-gray-500 text-xs">host.docker.internal:5432</div>
                     </button>
                     <button
                       onClick={() => {
-                        const supabaseUrl = prompt('Enter your Supabase connection string (with pooling):', 'postgresql://postgres.YOUR_PROJECT_REF:PASSWORD@aws-1-region.pooler.supabase.com:6543/postgres?pgbouncer=true');
+                        const supabaseUrl = prompt('Enter your Supabase connection string:\n\nGet it from: Supabase Dashboard → Project Settings → Database\n\nYou can use either the Pooler (port 6543) or Direct (port 5432) connection string.', 'postgresql://postgres.YOUR_PROJECT_REF:PASSWORD@aws-1-xx.pooler.supabase.com:6543/postgres?pgbouncer=true');
                         if (supabaseUrl) {
-                          const directUrl = supabaseUrl.replace(':6543/', ':5432/').replace('?pgbouncer=true', '');
                           setFormData({
                             ...formData,
                             databaseUrl: supabaseUrl,
-                            directUrl,
                           });
                         }
                       }}
                       className="block w-full text-left px-3 py-2 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
                     >
-                      <div className="font-medium text-gray-900">Supabase (Free)</div>
-                      <div className="text-gray-500 text-xs">Requires pooler and direct connection strings</div>
+                      <div className="font-medium text-gray-900">Supabase (Recommended, Free Tier)</div>
+                      <div className="text-gray-500 text-xs">Paste either connection string - we'll handle the rest</div>
                     </button>
                   </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-xs text-blue-800">
+                    <strong>Tip:</strong> For Supabase, paste either connection string. We'll automatically generate the direct connection needed for migrations.
+                  </p>
                 </div>
               </div>
             </div>
