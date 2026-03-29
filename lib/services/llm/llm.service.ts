@@ -30,6 +30,7 @@ import {
   LLMApiError,
   LLMParseError,
 } from './errors';
+import { FeedbackService } from '../feedback.service';
 import type {
   LLMApiRequest,
   LLMApiResponse,
@@ -157,11 +158,18 @@ export class LLMService {
     const userConfig = await getLLMConfigWithUserFallback();
     const strictness = userConfig.strictnessLevel || 'DEFAULT';
 
+    // Get steering context if userId available
+    let steeringContext: string | undefined;
+    if (input.userId) {
+      steeringContext = await FeedbackService.buildFeedbackSteeringContext(input.userId);
+    }
+
     const prompt = getEvaluateAnswerPrompt(
       input.question,
       input.userAnswer,
       input.currentBox,
       strictness,
+      steeringContext,
     );
 
     return withRetry(async () => {
@@ -199,12 +207,19 @@ export class LLMService {
     // Use user's LLM config (per-user configuration)
     const userConfig = await getLLMConfigWithUserFallback();
 
+    // Get steering context if userId available
+    let steeringContext: string | undefined;
+    if (input.userId) {
+      steeringContext = await FeedbackService.buildQuestionSteeringContext(input.userId);
+    }
+
     const prompt = getGenerateQuestionsPrompt(
       input.topic,
       input.difficulty,
       input.type,
       input.count || 3,
       input.customPrompt,
+      steeringContext,
     );
 
     return withRetry(async () => {

@@ -47,6 +47,7 @@ export interface EvaluateAnswerInput {
   question: string;
   userAnswer: string;
   currentBox: number;
+  userId?: string; // Optional: for fetching steering context
 }
 
 /**
@@ -76,6 +77,7 @@ export interface GenerateQuestionsInput {
   type: QuestionType;
   count?: number;
   customPrompt?: string;
+  userId?: string; // Optional: for fetching steering context
 }
 
 /**

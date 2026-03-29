@@ -28,6 +28,8 @@ import {
   Lock as LockIcon,
   Sparkles,
   XCircle,
+  ThumbsUp,
+  Info,
 } from 'lucide-react';
 import { StoragePreference, StrictnessLevel } from '@prisma/client';
 
@@ -431,6 +433,46 @@ export function LLMSettingsForm({ onSuccess }: LLMSettingsFormProps) {
               </div>
             </label>
           ))}
+        </div>
+      </div>
+
+      {/* AI Personalization Info */}
+      <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200 rounded-xl p-5">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center">
+            <ThumbsUp className="w-6 h-6 text-indigo-600" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <h4 className="text-lg font-semibold text-gray-900">AI Personalization</h4>
+              <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs font-medium rounded-full">Active</span>
+            </div>
+            <p className="text-sm text-gray-700 mb-3">
+              Your feedback helps the AI adapt to your learning style. After answering questions, you can rate:
+            </p>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-indigo-100">
+                <span className="text-green-600">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                  </svg>
+                </span>
+                <span className="text-gray-700"><strong>Questions</strong> — Adjusts difficulty</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-indigo-100">
+                <span className="text-green-600">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+                  </svg>
+                </span>
+                <span className="text-gray-700"><strong>Feedback</strong> — Adapts explanation style</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-3 flex items-center gap-1">
+              <Info className="w-3 h-3" />
+              Starts adapting after 5+ ratings. Your ratings improve future questions and feedback.
+            </p>
+          </div>
         </div>
       </div>
 

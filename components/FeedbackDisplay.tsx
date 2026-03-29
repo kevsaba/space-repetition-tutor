@@ -10,9 +10,12 @@
  * - Next review date
  * - Follow-up questions (if any)
  * - "Next Question" button
+ * - Thumbs up/down ratings for questions and feedback (for LLM steering)
  */
 
 import { useState } from 'react';
+
+type Rating = 'THUMBS_UP' | 'THUMBS_DOWN';
 
 interface LLMFeedback {
   evaluation: string;
@@ -38,6 +41,7 @@ interface FeedbackDisplayProps {
   onNext: () => void;
   loading?: boolean;
   buttonText?: string;
+  answerId?: string; // For submitting ratings
 }
 
 export function FeedbackDisplay({
@@ -49,8 +53,12 @@ export function FeedbackDisplay({
   onNext,
   loading = false,
   buttonText,
+  answerId,
 }: FeedbackDisplayProps) {
   const [showDetails, setShowDetails] = useState(false);
+  const [questionRating, setQuestionRating] = useState<Rating | null>(null);
+  const [feedbackRating, setFeedbackRating] = useState<Rating | null>(null);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
 
   const getBoxColor = (box: number) => {
     switch (box) {
@@ -91,6 +99,72 @@ export function FeedbackDisplay({
       day: 'numeric',
     });
   };
+
+  const handleRate = async (type: 'questionRating' | 'feedbackRating', value: Rating) => {
+    if (!answerId) return;
+
+    // Update local state immediately for responsiveness
+    if (type === 'questionRating') {
+      setQuestionRating(value);
+    } else {
+      setFeedbackRating(value);
+    }
+
+    // Submit asynchronously - don't block the UI
+    setRatingSubmitting(true);
+    try {
+      const response = await fetch(`/api/answers/${answerId}/feedback`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Ensure cookies are sent
+        body: JSON.stringify({ [type]: value }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to submit rating');
+        // Revert state on error
+        if (type === 'questionRating') {
+          setQuestionRating((prev) => (prev === value ? null : prev));
+        } else {
+          setFeedbackRating((prev) => (prev === value ? null : prev));
+        }
+      }
+    } catch (error) {
+      console.error('Error submitting rating:', error);
+      // Revert state on error
+      if (type === 'questionRating') {
+        setQuestionRating((prev) => (prev === value ? null : prev));
+      } else {
+        setFeedbackRating((prev) => (prev === value ? null : prev));
+      }
+    } finally {
+      setRatingSubmitting(false);
+    }
+  };
+
+  const ThumbsUpIcon = ({ selected }: { selected: boolean }) => (
+    <svg
+      className={`w-5 h-5 ${selected ? 'text-green-600 fill-green-600' : 'text-gray-400 hover:text-green-600'}`}
+      fill={selected ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+    </svg>
+  );
+
+  const ThumbsDownIcon = ({ selected }: { selected: boolean }) => (
+    <svg
+      className={`w-5 h-5 ${selected ? 'text-red-600 fill-red-600' : 'text-gray-400 hover:text-red-600'}`}
+      fill={selected ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v5a2 2 0 002 2h.095c.5 0 .905-.405.905-.905 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5-10H2a2 2 0 00-2 2v6a2 2 0 002 2h2.5" />
+    </svg>
+  );
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
@@ -210,20 +284,9 @@ export function FeedbackDisplay({
       {/* Follow-up Questions */}
       {followUpQuestions.length > 0 && (
         <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-          <h4 className="text-sm font-semibold text-indigo-900 mb-3">
-            Follow-up Questions ({followUpQuestions.length})
-          </h4>
-          <p className="text-sm text-indigo-700 mb-3">
-            These follow-ups will appear after you click &ldquo;Next Question&rdquo;.
+          <p className="text-sm text-indigo-700">
+            <span className="font-semibold text-indigo-900">Follow-up questions coming!</span> Click "Next" to continue.
           </p>
-          <div className="space-y-2">
-            {followUpQuestions.map((fq, index) => (
-              <div key={index} className="bg-white p-3 rounded border border-indigo-100">
-                <p className="text-sm font-medium text-gray-900">{fq.content}</p>
-                <p className="text-xs text-gray-500 mt-1">{fq.reason}</p>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
@@ -233,14 +296,80 @@ export function FeedbackDisplay({
         <p className="text-gray-900">{formatDate(nextDueDate)}</p>
       </div>
 
-      {/* Next Button */}
-      <button
-        onClick={onNext}
-        disabled={loading}
-        className="w-full py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {loading ? 'Loading...' : buttonText || 'Next Question'}
-      </button>
+      {/* Bottom Section: Ratings and Next Button */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+        {/* Rating Buttons - only show if answerId is provided */}
+        {answerId && (
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Question Rating */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Rate question:</span>
+              <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-200">
+                <button
+                  onClick={() => handleRate('questionRating', 'THUMBS_UP')}
+                  disabled={ratingSubmitting}
+                  className="relative p-2 rounded hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
+                  aria-label="Thumbs up for question"
+                >
+                  <ThumbsUpIcon selected={questionRating === 'THUMBS_UP'} />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    I liked this question
+                  </span>
+                </button>
+                <button
+                  onClick={() => handleRate('questionRating', 'THUMBS_DOWN')}
+                  disabled={ratingSubmitting}
+                  className="relative p-2 rounded hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
+                  aria-label="Thumbs down for question"
+                >
+                  <ThumbsDownIcon selected={questionRating === 'THUMBS_DOWN'} />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    Too difficult or unclear
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Feedback Rating */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Rate feedback:</span>
+              <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-200">
+                <button
+                  onClick={() => handleRate('feedbackRating', 'THUMBS_UP')}
+                  disabled={ratingSubmitting}
+                  className="relative p-2 rounded hover:bg-green-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
+                  aria-label="Thumbs up for feedback"
+                >
+                  <ThumbsUpIcon selected={feedbackRating === 'THUMBS_UP'} />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    Helpful feedback
+                  </span>
+                </button>
+                <button
+                  onClick={() => handleRate('feedbackRating', 'THUMBS_DOWN')}
+                  disabled={ratingSubmitting}
+                  className="relative p-2 rounded hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed group"
+                  aria-label="Thumbs down for feedback"
+                >
+                  <ThumbsDownIcon selected={feedbackRating === 'THUMBS_DOWN'} />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                    Too complex or unclear
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Next Button */}
+        <button
+          onClick={onNext}
+          disabled={loading}
+          className="flex-1 sm:flex-none sm:w-auto px-8 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? 'Loading...' : buttonText || 'Next Question'}
+        </button>
+      </div>
     </div>
   );
 }

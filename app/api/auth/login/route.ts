@@ -9,6 +9,9 @@ import { UserService } from '@/lib/services/user.service';
 import { hasEncryptedApiKey, decryptApiKey } from '@/lib/services/llm-config.service';
 import { z } from 'zod';
 import { cookies } from 'next/headers';
+import { withConfigCheck } from '@/lib/middleware/api-config-check';
+import { ConfigError } from '@/lib/errors/config-error';
+import { isTableNotFoundError, isConnectionError } from '@/lib/services/database-health.service';
 
 // Validation schema
 const loginSchema = z.object({
@@ -16,7 +19,13 @@ const loginSchema = z.object({
   password: z.string(),
 });
 
-export async function POST(request: NextRequest) {
+/**
+ * Login handler - wrapped with configuration check
+ *
+ * The withConfigCheck wrapper ensures DATABASE_URL is configured
+ * before this handler executes. If not configured, returns 503.
+ */
+async function POSTHandler(request: NextRequest) {
   try {
     const body = await request.json();
 
@@ -69,6 +78,20 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    // Handle ConfigError (app not configured)
+    if (error instanceof ConfigError) {
+      return NextResponse.json(
+        {
+          error: {
+            code: error.code,
+            message: error.message,
+            setupUrl: error.setupUrl
+          }
+        },
+        { status: 503 },
+      );
+    }
+
     // Handle Zod validation errors
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -79,6 +102,33 @@ export async function POST(request: NextRequest) {
 
     // Handle known domain errors
     if (error instanceof Error) {
+      // Check for database table/connection errors first
+      if (isTableNotFoundError(error)) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'DATABASE_NOT_READY',
+              message: 'Database tables not found. Please complete the database setup.',
+              setupUrl: '/setup'
+            }
+          },
+          { status: 503 },
+        );
+      }
+
+      if (isConnectionError(error)) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'DATABASE_NOT_READY',
+              message: 'Cannot connect to database. Please check your database configuration.',
+              setupUrl: '/setup'
+            }
+          },
+          { status: 503 },
+        );
+      }
+
       if (error.message === 'Invalid credentials') {
         return NextResponse.json(
           { error: { code: 'UNAUTHORIZED', message: error.message } },
@@ -100,3 +150,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// Export with configuration check wrapper
+export const POST = withConfigCheck(POSTHandler);

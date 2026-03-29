@@ -96,6 +96,12 @@ model Answer {
   isFollowUp       Boolean      @default(false)
   followUpQuestion String?
   sessionId        String?
+
+  // User ratings for LLM steering
+  questionRating   Rating?      // User's rating of the question
+  feedbackRating   Rating?      // User's rating of the LLM feedback
+  ratedAt          DateTime?    // When the user submitted ratings
+
   userQuestion     UserQuestion @relation(fields: [userQuestionId], references: [id], onDelete: Cascade)
 
   @@index([userQuestionId])
@@ -219,4 +225,9 @@ enum StrictnessLevel {
   DEFAULT
   STRICT
   LENIENT
+}
+
+enum Rating {
+  THUMBS_UP
+  THUMBS_DOWN
 }

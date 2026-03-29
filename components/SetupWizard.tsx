@@ -6,41 +6,38 @@
  * Multi-step wizard for initial application setup:
  * Step 1: Welcome
  * Step 2: Database Configuration
- * Step 3: LLM Configuration
- * Step 4: Validation & Complete
+ * Step 3: Validation & Complete
+ *
+ * Note: LLM configuration is done per-user in settings, not globally.
  */
 
 import { useState, useEffect } from 'react';
-import { Check, ChevronRight, Database, Cloud, Key, Globe, Loader2, ExternalLink } from 'lucide-react';
+import { Check, ChevronRight, Database, Cloud, Globe, Loader2, ExternalLink } from 'lucide-react';
 
 interface SetupWizardProps {
   onComplete: () => void;
+  redirectReason?: string | null;
 }
 
 interface FormErrors {
   databaseUrl?: string;
-  apiUrl?: string;
-  apiKey?: string;
-  model?: string;
 }
 
-type Step = 'welcome' | 'database' | 'llm' | 'validation' | 'complete';
+type Step = 'welcome' | 'database' | 'validation' | 'complete';
 
 const STEPS: Array<{ id: Step; title: string; icon: React.ReactNode }> = [
   { id: 'welcome', title: 'Welcome', icon: <Globe className="w-5 h-5" /> },
   { id: 'database', title: 'Database', icon: <Database className="w-5 h-5" /> },
-  { id: 'llm', title: 'LLM Provider', icon: <Key className="w-5 h-5" /> },
   { id: 'validation', title: 'Validate', icon: <Cloud className="w-5 h-5" /> },
   { id: 'complete', title: 'Complete', icon: <Check className="w-5 h-5" /> },
 ];
 
-export function SetupWizard({ onComplete }: SetupWizardProps) {
+export function SetupWizard({ onComplete, redirectReason }: SetupWizardProps) {
   const [currentStep, setCurrentStep] = useState<Step>('welcome');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [validationResult, setValidationResult] = useState<{
     database: boolean;
-    llm: boolean;
   } | null>(null);
 
   // Helper function to derive direct URL from database URL
@@ -80,12 +77,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     return null; // Valid
   };
 
-  // Form state
+  // Form state - only database now
   const [formData, setFormData] = useState({
     databaseUrl: '',
-    apiUrl: 'https://api.openai.com/v1',
-    apiKey: '',
-    model: 'gpt-4o-mini',
   });
 
   const stepIndex = STEPS.findIndex((s) => s.id === currentStep);
@@ -105,26 +99,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       const dbError = validatePostgresUrl(formData.databaseUrl);
       if (dbError) {
         newErrors.databaseUrl = dbError;
-      }
-      if (Object.keys(newErrors).length > 0) {
-        setErrors(newErrors);
-        return;
-      }
-    }
-
-    if (currentStep === 'llm') {
-      const newErrors: FormErrors = {};
-      if (!formData.apiUrl.trim()) {
-        newErrors.apiUrl = 'API URL is required';
-      }
-      if (!formData.apiKey.trim()) {
-        newErrors.apiKey = 'API Key is required';
-      }
-      if (!formData.model.trim()) {
-        newErrors.model = 'Model is required';
-      }
-      if (formData.apiKey.length < 10) {
-        newErrors.apiKey = 'API Key appears to be invalid';
       }
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
@@ -155,7 +129,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     setIsProcessing(true);
     setValidationResult(null);
 
-    const results = { database: false, llm: false };
+    const results = { database: false };
     const directUrl = deriveDirectUrl(formData.databaseUrl);
 
     try {
@@ -180,32 +154,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
       setErrors({ databaseUrl: 'Failed to validate database connection' });
     }
 
-    try {
-      const response = await fetch('/api/setup/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'llm',
-          config: {
-            apiUrl: formData.apiUrl,
-            apiKey: formData.apiKey,
-            model: formData.model,
-          },
-        }),
-      });
-      if (response.ok) {
-        results.llm = true;
-      } else {
-        const data = await response.json();
-        setErrors({ apiKey: data.error || 'LLM connection failed' });
-      }
-    } catch (err) {
-      setErrors({ apiKey: 'Failed to validate LLM connection' });
-    }
-
     setValidationResult(results);
 
-    if (results.database && results.llm) {
+    if (results.database) {
       await saveConfiguration();
       setCurrentStep('complete');
     } else {
@@ -223,11 +174,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
           database: {
             url: formData.databaseUrl,
             directUrl: directUrl,
-          },
-          llm: {
-            apiUrl: formData.apiUrl,
-            apiKey: formData.apiKey,
-            model: formData.model,
           },
         }),
       });
@@ -264,8 +210,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               const isCompleted = index < stepIndex;
               const isCurrent = step.id === currentStep;
               const isError = currentStep === 'validation' && validationResult &&
-                ((step.id === 'database' && !validationResult.database) ||
-                 (step.id === 'llm' && !validationResult.llm));
+                ((step.id === 'database' && !validationResult.database));
 
               return (
                 <div key={step.id} className="flex items-center flex-1">
@@ -316,6 +261,18 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 in just a few steps.
               </p>
 
+              {/* Show contextual message if redirected from auth */}
+              {redirectReason && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg max-w-md mx-auto">
+                  <p className="text-sm text-amber-800">
+                    {redirectReason}
+                  </p>
+                  <p className="text-xs text-amber-700 mt-2">
+                    Please complete the setup below to continue.
+                  </p>
+                </div>
+              )}
+
               {/* Supabase Promo in Welcome */}
               <a
                 href="https://supabase.com?utm_source=space-repetition-tutor"
@@ -346,7 +303,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 </p>
                 <ul className="text-left space-y-2 ml-4">
                   <li>✓ <strong>PostgreSQL</strong> database (Supabase recommended, free tier available)</li>
-                  <li>✓ An LLM API key (OpenAI, Groq, or compatible)</li>
+                  <li>✓ An LLM API key (you'll add this in your account settings later)</li>
                 </ul>
                 <p className="mt-3 text-xs text-blue-700 border-t border-blue-300 pt-2">
                   <strong>Note:</strong> Only PostgreSQL is supported. MySQL, SQLite, and MongoDB are not compatible.
@@ -429,7 +386,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     <button
                       onClick={() => {
                         setFormData({
-                          ...formData,
                           databaseUrl: 'postgresql://postgres:postgres@host.docker.internal:5432/spaced_repetition_tutor',
                         });
                       }}
@@ -443,7 +399,6 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                         const supabaseUrl = prompt('Enter your Supabase connection string:\n\nGet it from: Supabase Dashboard → Project Settings → Database\n\nYou can use either the Pooler (port 6543) or Direct (port 5432) connection string.', 'postgresql://postgres.YOUR_PROJECT_REF:PASSWORD@aws-1-xx.pooler.supabase.com:6543/postgres?pgbouncer=true');
                         if (supabaseUrl) {
                           setFormData({
-                            ...formData,
                             databaseUrl: supabaseUrl,
                           });
                         }
@@ -465,117 +420,13 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             </div>
           )}
 
-          {currentStep === 'llm' && (
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Configure LLM Provider
-              </h2>
-              <p className="text-gray-600 mb-6">
-                Connect to your LLM provider. Your API key is stored locally on your server.
-              </p>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    API Endpoint URL
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.apiUrl}
-                    onChange={(e) => setFormData({ ...formData, apiUrl: e.target.value })}
-                    placeholder="https://api.openai.com/v1"
-                    className={'w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ' +
-                      (getErrorForField('apiUrl') ? 'border-red-300 bg-red-50' : 'border-gray-300')
-                    }
-                  />
-                  {getErrorForField('apiUrl') && (
-                    <p className="mt-1 text-sm text-red-600">{getErrorForField('apiUrl')}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    API Key
-                  </label>
-                  <input
-                    type="password"
-                    value={formData.apiKey}
-                    onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                    placeholder="sk-..."
-                    className={'w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ' +
-                      (getErrorForField('apiKey') ? 'border-red-300 bg-red-50' : 'border-gray-300')
-                    }
-                  />
-                  {getErrorForField('apiKey') && (
-                    <p className="mt-1 text-sm text-red-600">{getErrorForField('apiKey')}</p>
-                  )}
-                  <p className="mt-1 text-xs text-gray-500">
-                    Your key is stored on your server and never sent elsewhere.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Model
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.model}
-                    onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                    placeholder="gpt-4o-mini"
-                    className={'w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ' +
-                      (getErrorForField('model') ? 'border-red-300 bg-red-50' : 'border-gray-300')
-                    }
-                  />
-                  {getErrorForField('model') && (
-                    <p className="mt-1 text-sm text-red-600">{getErrorForField('model')}</p>
-                  )}
-                </div>
-
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm font-medium text-gray-700 mb-2">
-                    Popular Providers:
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        setFormData({
-                          ...formData,
-                          apiUrl: 'https://api.openai.com/v1',
-                          model: 'gpt-4o-mini',
-                        });
-                      }}
-                      className="text-left px-3 py-2 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors text-sm"
-                    >
-                      <div className="font-medium text-gray-900">OpenAI</div>
-                      <div className="text-xs text-gray-500">gpt-4o-mini</div>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setFormData({
-                          ...formData,
-                          apiUrl: 'https://api.groq.com/openai/v1',
-                          model: 'llama-3.3-8b',
-                        });
-                      }}
-                      className="text-left px-3 py-2 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors text-sm"
-                    >
-                      <div className="font-medium text-gray-900">Groq</div>
-                      <div className="text-xs text-gray-500">Free tier available</div>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {currentStep === 'validation' && (
             <div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
                 Validate Configuration
               </h2>
               <p className="text-gray-600 mb-6">
-                Let&apos;s verify that your connections work properly.
+                Let&apos;s verify that your database connection works properly.
               </p>
 
               <div className="space-y-3">
@@ -605,36 +456,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                     <p className="text-sm text-red-600 mt-2">{getErrorForField('databaseUrl')}</p>
                   )}
                 </div>
-
-                <div className={'border rounded-lg p-4 ' +
-                  (validationResult?.llm
-                    ? 'bg-green-50 border-green-200'
-                    : validationResult !== null
-                    ? 'bg-red-50 border-red-200'
-                    : 'bg-gray-50 border-gray-200')
-                }>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Key className="w-5 h-5 text-gray-600" />
-                      <span className="font-medium text-gray-900">LLM Provider</span>
-                    </div>
-                    {isProcessing && validationResult === null ? (
-                      <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
-                    ) : validationResult?.llm ? (
-                      <Check className="w-5 h-5 text-green-600" />
-                    ) : validationResult !== null && !validationResult.llm ? (
-                      <span className="text-red-600 text-sm">Failed</span>
-                    ) : (
-                      <span className="text-gray-400 text-sm">Pending</span>
-                    )}
-                  </div>
-                  {validationResult !== null && !validationResult.llm && (
-                    <p className="text-sm text-red-600 mt-2">{getErrorForField('apiKey')}</p>
-                  )}
-                </div>
               </div>
 
-              {validationResult !== null && (!validationResult.database || !validationResult.llm) && (
+              {validationResult !== null && !validationResult.database && (
                 <div className="mt-6">
                   <button
                     onClick={handleRetryValidation}
@@ -658,6 +482,14 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
               <p className="text-gray-600 mb-6 max-w-md mx-auto">
                 Your Space Repetition Tutor is ready. Create an account to get started with your learning journey.
               </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800 max-w-md mx-auto mb-6">
+                <p className="font-medium mb-2">
+                  <strong>Next Step:</strong>
+                </p>
+                <p className="text-xs text-blue-700">
+                  After creating your account, you'll be able to configure your LLM provider (OpenAI, Groq, etc.) in your account settings.
+                </p>
+              </div>
               <div className="flex flex-col gap-3 items-center">
                 <a
                   href="/signup"
@@ -708,7 +540,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
             </div>
           )}
 
-          {currentStep === 'validation' && !isProcessing && validationResult !== null && (!validationResult.database || !validationResult.llm) && (
+          {currentStep === 'validation' && !isProcessing && validationResult !== null && !validationResult.database && (
             <div className="flex justify-start mt-8 pt-6 border-t border-gray-200">
               <button
                 onClick={handleBack}

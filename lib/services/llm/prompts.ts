@@ -19,6 +19,8 @@ Strictness: {strictness}
 
 {strictnessGuidance}
 
+{steeringContext}
+
 Respond in JSON format:
 {
   "passed": true/false,
@@ -67,6 +69,8 @@ const GENERATE_QUESTIONS_TEMPLATE = `You are generating interview questions for:
 
 Difficulty: {difficulty} (JUNIOR/MID/SENIOR)
 Type: {type} (CONCEPTUAL/CODING/DESIGN)
+
+{steeringContext}
 
 Generate {count} questions that:
 - Test deep understanding, not syntax trivia
@@ -169,14 +173,18 @@ export function getEvaluateAnswerPrompt(
   userAnswer: string,
   currentBox: number,
   strictness: 'DEFAULT' | 'STRICT' | 'LENIENT' = 'DEFAULT',
+  steeringContext?: string,
 ): string {
   const strictnessGuidance = getStrictnessGuidance(strictness);
+  // Use empty string if no steering context
+  const context = steeringContext || '';
   return substituteTemplate(EVALUATE_ANSWER_TEMPLATE, {
     question,
     userAnswer,
     currentBox,
     strictness,
     strictnessGuidance,
+    steeringContext: context,
   });
 }
 
@@ -189,12 +197,16 @@ export function getGenerateQuestionsPrompt(
   type: string,
   count: number = 3,
   customPrompt?: string,
+  steeringContext?: string,
 ): string {
+  // Use empty string if no steering context
+  const context = steeringContext || '';
   const basePrompt = substituteTemplate(GENERATE_QUESTIONS_TEMPLATE, {
     topic,
     difficulty,
     type,
     count,
+    steeringContext: context,
   });
 
   // Append custom prompt if provided (e.g., for specific difficulty guidance)

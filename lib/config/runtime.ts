@@ -110,19 +110,18 @@ export function saveRuntimeConfig(config: RuntimeConfig): void {
 
 /**
  * Check if app is configured via runtime config
- * Also checks environment variables as fallback
+ * Only checks database configuration now (LLM is per-user)
  */
 export function isRuntimeConfigured(): boolean {
   // First check environment variables (traditional deployment)
-  if (process.env.DATABASE_URL && process.env.LLM_API_KEY) {
+  if (process.env.DATABASE_URL) {
     return true;
   }
 
   // Then check runtime config file
   const config = getRuntimeConfig();
   return config?.isConfigured === true &&
-    !!config.database.url &&
-    !!config.llm.apiKey;
+    !!config.database.url;
 }
 
 /**

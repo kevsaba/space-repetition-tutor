@@ -7,14 +7,15 @@
  * Collects database and LLM configuration on first run.
  */
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { SetupWizard } from '@/components/SetupWizard';
 
-export default function SetupPage() {
+function SetupContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isChecking, setIsChecking] = useState(true);
-  const [shouldRedirect, setShouldRedirect] = useState(false);
+  const [redirectReason, setRedirectReason] = useState<string | null>(null);
 
   useEffect(() => {
     const checkConfig = async () => {
@@ -33,8 +34,14 @@ export default function SetupPage() {
       }
     };
 
+    // Get redirect reason from URL params
+    const reason = searchParams.get('reason');
+    if (reason) {
+      setRedirectReason(reason);
+    }
+
     checkConfig();
-  }, []);
+  }, [searchParams]);
 
   const handleSetupComplete = () => {
     // Use direct navigation to ensure redirect happens
@@ -52,5 +59,20 @@ export default function SetupPage() {
     );
   }
 
-  return <SetupWizard onComplete={handleSetupComplete} />;
+  return <SetupWizard onComplete={handleSetupComplete} redirectReason={redirectReason} />;
+}
+
+export default function SetupPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <SetupContent />
+    </Suspense>
+  );
 }

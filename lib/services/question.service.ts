@@ -589,6 +589,7 @@ async function generateQuestionsForTopic(
         difficulty: topic.difficulty as QuestionDifficulty,
         type: 'CONCEPTUAL' as QuestionType,
         count: remaining,
+        userId, // Pass userId for steering context
       });
 
       for (const q of response.questions) {
@@ -722,6 +723,7 @@ async function generateQuestionsWithLLM(
           difficulty: topic.difficulty as QuestionDifficulty,
           type: 'CONCEPTUAL' as QuestionType,
           count: Math.min(topicCount, count - generatedQuestions.length),
+          userId, // Pass userId for steering context
         });
 
         // Store generated questions as templates in database
@@ -835,6 +837,7 @@ async function generateQuestionsForSpecificTopic(
       type: 'CONCEPTUAL' as QuestionType,
       count,
       customPrompt: `Difficulty: ${difficultyPrompt[questionDifficulty]}`,
+      userId, // Pass userId for steering context
     });
 
     for (const q of response.questions) {
@@ -906,12 +909,9 @@ async function getUserFocusTopics(
     }));
   }
 
-  // Default topics if no career track
-  return [
-    { name: 'Java Concurrency', category: 'Backend', track: 'JAVA', difficulty: 'MID' },
-    { name: 'REST API Design', category: 'Backend', track: 'GENERAL', difficulty: 'MID' },
-    { name: 'Database Design', category: 'Database', track: 'GENERAL', difficulty: 'MID' },
-  ];
+  // No default topics - app is language-agnostic
+  // Users must create career tracks or topics via upload
+  return [];
 }
 
 /**

@@ -83,6 +83,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         question: userQuestion.question.content,
         userAnswer: validatedData.answer,
         currentBox: userQuestion.box,
+        userId, // Pass userId for steering context
       });
       passed = evaluation.passed;
     } catch (error) {
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const hasFollowUps = followUpQuestions.length > 0;
 
     // Record answer with feedback (always record the original answer)
-    await prisma.answer.create({
+    const answer = await prisma.answer.create({
       data: {
         userQuestionId,
         content: validatedData.answer,
@@ -159,6 +160,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         followUpQuestions,
         hasFollowUps: false,
         requiresCompletion: false,
+        answerId: answer.id, // Include answer ID for rating
       });
     }
 
@@ -171,6 +173,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       hasFollowUps: true,
       requiresCompletion: true,
       remainingFollowUps: followUpQuestions.length,
+      answerId: answer.id, // Include answer ID for rating
     });
   } catch (error) {
     // Handle Zod validation errors

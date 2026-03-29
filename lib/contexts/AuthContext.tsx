@@ -63,6 +63,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!response.ok) {
       const data = await response.json();
+
+      // Handle 503 Service Unavailable (app not configured)
+      // Return structured error so pages can handle display (show banner vs redirect)
+      if (response.status === 503) {
+        const error = new Error(JSON.stringify({
+          code: data.error?.code,
+          message: data.error?.message,
+          setupUrl: data.error?.setupUrl
+        }));
+        error.name = 'ConfigError';
+        throw error;
+      }
+
       throw new Error(data.error?.message || 'Login failed');
     }
 
@@ -79,6 +92,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (!response.ok) {
       const data = await response.json();
+
+      // Handle 503 Service Unavailable (app not configured)
+      // Return structured error so pages can handle display (show banner vs redirect)
+      if (response.status === 503) {
+        const error = new Error(JSON.stringify({
+          code: data.error?.code,
+          message: data.error?.message,
+          setupUrl: data.error?.setupUrl
+        }));
+        error.name = 'ConfigError';
+        throw error;
+      }
+
       throw new Error(data.error?.message || 'Registration failed');
     }
 

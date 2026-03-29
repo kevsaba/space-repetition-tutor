@@ -80,6 +80,7 @@ export default function FreePracticePage() {
     nextDueDate: Date;
     feedback: LLMFeedback;
     followUpQuestions: FollowUpQuestion[];
+    answerId?: string; // For rating functionality
   } | null>(null);
   const [currentFollowUpIndex, setCurrentFollowUpIndex] = useState(0);
   const [followUpResults, setFollowUpResults] = useState<FollowUpResult[]>([]);
@@ -205,6 +206,7 @@ export default function FreePracticePage() {
         nextDueDate: new Date(data.nextDueDate),
         feedback: data.feedback,
         followUpQuestions: data.followUpQuestions || [],
+        answerId: data.answerId, // Store answer ID for rating
       });
       setCurrentFollowUpIndex(0);
       setFollowUpResults([]);
@@ -504,6 +506,7 @@ export default function FreePracticePage() {
             onNext={handleNext}
             loading={false}
             buttonText={feedback.followUpQuestions.length > 0 ? 'Continue to Follow-ups' : 'Next Question'}
+            answerId={feedback.answerId}
           />
         )}
 
