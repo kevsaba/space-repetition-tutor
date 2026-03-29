@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Check, ChevronRight, Database, Cloud, Key, Globe, Loader2 } from 'lucide-react';
+import { Check, ChevronRight, Database, Cloud, Key, Globe, Loader2, ExternalLink } from 'lucide-react';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -56,6 +56,30 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
     return dbUrl;
   };
 
+  // Validate that the connection string is PostgreSQL
+  const validatePostgresUrl = (url: string): string | null => {
+    if (!url.trim()) {
+      return 'Database URL is required';
+    }
+
+    // Must start with postgres:// or postgresql://
+    if (!url.startsWith('postgres://') && !url.startsWith('postgresql://')) {
+      return 'This application requires PostgreSQL. Connection string must start with postgres:// or postgresql://';
+    }
+
+    // Basic URL structure validation
+    try {
+      const urlObj = new URL(url);
+      if (urlObj.protocol !== 'postgres:' && urlObj.protocol !== 'postgresql:') {
+        return 'Only PostgreSQL databases are supported (mysql:, sqlite:, mongodb: are not compatible)';
+      }
+    } catch {
+      return 'Invalid connection string format. Expected: postgresql://user:password@host:port/database';
+    }
+
+    return null; // Valid
+  };
+
   // Form state
   const [formData, setFormData] = useState({
     databaseUrl: '',
@@ -78,8 +102,9 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 
     if (currentStep === 'database') {
       const newErrors: FormErrors = {};
-      if (!formData.databaseUrl.trim()) {
-        newErrors.databaseUrl = 'Database URL is required';
+      const dbError = validatePostgresUrl(formData.databaseUrl);
+      if (dbError) {
+        newErrors.databaseUrl = dbError;
       }
       if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
@@ -290,16 +315,41 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 This is your self-hosted study companion. Let&apos;s set up your environment
                 in just a few steps.
               </p>
+
+              {/* Supabase Promo in Welcome */}
+              <a
+                href="https://supabase.com?utm_source=space-repetition-tutor"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block mb-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl hover:shadow-lg transition-shadow max-w-md mx-auto"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0 w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                    <Database className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-green-800">Need a database?</span>
+                      <span className="px-2 py-0.5 bg-green-500 text-white text-xs font-medium rounded-full">FREE</span>
+                    </div>
+                    <p className="text-xs text-green-700 mt-1">
+                      Get a free PostgreSQL database at Supabase.com →
+                    </p>
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-green-600" />
+                </div>
+              </a>
+
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800 max-w-md mx-auto">
                 <p className="font-medium mb-2">
                   <strong>You will need:</strong>
                 </p>
                 <ul className="text-left space-y-2 ml-4">
-                  <li>✓ <strong>One</strong> PostgreSQL connection string (we'll handle the rest)</li>
+                  <li>✓ <strong>PostgreSQL</strong> database (Supabase recommended, free tier available)</li>
                   <li>✓ An LLM API key (OpenAI, Groq, or compatible)</li>
                 </ul>
-                <p className="mt-3 text-xs text-blue-700">
-                  <strong>Supabase users:</strong> Just paste either connection string from your dashboard. We'll auto-generate the other.
+                <p className="mt-3 text-xs text-blue-700 border-t border-blue-300 pt-2">
+                  <strong>Note:</strong> Only PostgreSQL is supported. MySQL, SQLite, and MongoDB are not compatible.
                 </p>
               </div>
             </div>
@@ -311,13 +361,40 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                 Configure Database
               </h2>
               <p className="text-gray-600 mb-6">
-                Connect to your PostgreSQL database. This is where your progress and questions are stored.
+                This app requires a <strong>PostgreSQL</strong> database. Other databases (MySQL, SQLite, MongoDB) are not supported.
               </p>
+
+              {/* Supabase Promo Card */}
+              <a
+                href="https://supabase.com?utm_source=space-repetition-tutor"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block mb-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl hover:shadow-lg transition-shadow"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0 w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                    <Database className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-green-800">Supabase</span>
+                      <span className="px-2 py-0.5 bg-green-500 text-white text-xs font-medium rounded-full">FREE</span>
+                    </div>
+                    <p className="text-sm text-green-700 mt-1">
+                      The easiest way to get started. PostgreSQL database with generous free tier, no credit card required.
+                    </p>
+                    <div className="flex items-center gap-1 text-xs text-green-600 mt-2 font-medium">
+                      Create free account
+                      <ExternalLink className="w-3 h-3" />
+                    </div>
+                  </div>
+                </div>
+              </a>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Database Connection String
+                    PostgreSQL Connection String
                   </label>
                   <input
                     type="text"
@@ -331,9 +408,15 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                   {getErrorForField('databaseUrl') && (
                     <p className="mt-1 text-sm text-red-600">{getErrorForField('databaseUrl')}</p>
                   )}
-                  {formData.databaseUrl.includes('pooler.supabase.com') && (
+                  {formData.databaseUrl && !getErrorForField('databaseUrl') && formData.databaseUrl.includes('pooler.supabase.com') && (
                     <p className="mt-1 text-xs text-green-600 flex items-center gap-1">
-                      <span className="font-medium">Supabase detected!</span> Direct connection will be auto-generated.
+                      <Check className="w-3 h-3" />
+                      <span className="font-medium">Supabase pooler detected!</span> Direct connection will be auto-generated.
+                    </p>
+                  )}
+                  {formData.databaseUrl && !getErrorForField('databaseUrl') && !formData.databaseUrl.includes('supabase') && (
+                    <p className="mt-1 text-xs text-blue-600">
+                      ✓ Valid PostgreSQL connection string
                     </p>
                   )}
                 </div>
@@ -367,15 +450,15 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
                       }}
                       className="block w-full text-left px-3 py-2 bg-white border border-gray-200 rounded hover:bg-gray-50 transition-colors"
                     >
-                      <div className="font-medium text-gray-900">Supabase (Recommended, Free Tier)</div>
-                      <div className="text-gray-500 text-xs">Paste either connection string - we'll handle the rest</div>
+                      <div className="font-medium text-gray-900">Supabase (paste connection string)</div>
+                      <div className="text-gray-500 text-xs">We'll auto-generate the direct connection</div>
                     </button>
                   </div>
                 </div>
 
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <p className="text-xs text-blue-800">
-                    <strong>Tip:</strong> For Supabase, paste either connection string. We'll automatically generate the direct connection needed for migrations.
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-xs text-amber-800">
+                    <strong>PostgreSQL only:</strong> This application is built for PostgreSQL. MySQL, SQLite, MongoDB, and other databases are not supported.
                   </p>
                 </div>
               </div>
