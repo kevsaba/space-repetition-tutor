@@ -6,6 +6,10 @@
  * Priority:
  * 1. Setup check - Redirect to /setup if not configured (bypass for auth routes)
  * 2. Authentication - Protect authenticated routes
+ *
+ * IMPORTANT: If user has an auth_token, we assume the app is configured.
+ * This handles the case where setup just completed but the server hasn't
+ * reloaded the .env.local file yet (dev mode only).
  */
 
 import { NextResponse } from 'next/server';
@@ -30,9 +34,12 @@ const AUTH_REQUIRED_ROUTES = ['/dashboard', '/study', '/upload', '/settings', '/
  * For deployment scenarios:
  * - Traditional: Uses environment variables (Docker, Vercel, etc.)
  * - Setup wizard: Runtime config + .env.local for middleware access
+ *
+ * Note: LLM configuration is now per-user (set in account settings), not global.
+ * We only check for database configuration here.
  */
 function isConfigured(): boolean {
-  return !!(process.env.DATABASE_URL && process.env.LLM_API_KEY);
+  return !!process.env.DATABASE_URL;
 }
 
 export async function middleware(request: NextRequest) {
@@ -48,18 +55,30 @@ export async function middleware(request: NextRequest) {
   }
 
   const configured = isConfigured();
+  const authToken = request.cookies.get('auth_token')?.value;
 
-  // Only redirect to setup if not configured AND not accessing bypass routes
-  // This allows /login and /signup to work even when not configured
-  if (!configured && !SETUP_BYPASS_ROUTES.some(route => pathname.startsWith(route) || pathname === route)) {
+  // IMPORTANT: If user has an auth_token, the app must be configured
+  // (otherwise they couldn't have registered). Skip setup check.
+  const isAuthenticated = !!authToken;
+
+  // Only redirect to setup if:
+  // - Not configured AND
+  // - Not authenticated AND
+  // - Not accessing a bypass route
+  const isBypass = SETUP_BYPASS_ROUTES.some(route => {
+    if (route === '/') return pathname === '/';
+    return pathname.startsWith(route);
+  });
+
+  if (!configured && !isAuthenticated && !isBypass) {
     const url = new URL('/setup', request.url);
     return NextResponse.redirect(url);
   }
 
   // Check authentication for protected routes
-  if (configured && AUTH_REQUIRED_ROUTES.some(route => pathname.startsWith(route) || pathname === route)) {
-    const authToken = request.cookies.get('auth_token')?.value;
-    
+  // Note: If user is authenticated, we allow access even if configured=false
+  // (handles dev mode where .env.local wasn't reloaded)
+  if ((configured || isAuthenticated) && AUTH_REQUIRED_ROUTES.some(route => pathname.startsWith(route) || pathname === route)) {
     if (!authToken) {
       const url = new URL('/login', request.url);
       url.searchParams.set('redirect', pathname);

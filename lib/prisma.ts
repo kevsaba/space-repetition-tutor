@@ -4,9 +4,9 @@
  * Prevents multiple instances of Prisma Client in development.
  * Uses runtime config from setup wizard or falls back to environment variables.
  *
- * IMPORTANT: Prisma Client validates env() references in schema.prisma during
- * module import. To support runtime config, we need to set environment variables
- * before the first Prisma import, then use lazy initialization.
+ * IMPORTANT: We override the datasource URL directly in the PrismaClient
+ * constructor to bypass Prisma's env() validation at module import time.
+ * This allows runtime config to work without requiring a server restart.
  *
  * See: https://www.prisma.io/docs/support/help-articles/nextjs-prisma-client-dev-practices
  */
@@ -16,44 +16,40 @@ import { getDatabaseUrl, getDirectUrl } from '@/lib/config/runtime';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  databaseUrl: string | undefined;
 };
-
-/**
- * Set up environment variables from runtime config before creating Prisma Client
- * This is necessary because Prisma validates env() references during import
- */
-function setupPrismaEnvVars(): void {
-  // Only set from runtime config if env vars are not already set
-  // (env vars take priority for traditional deployments)
-  if (!process.env.DATABASE_URL) {
-    try {
-      process.env.DATABASE_URL = getDatabaseUrl();
-    } catch (error) {
-      // Config not available, will use default error handling
-    }
-  }
-
-  if (!process.env.DIRECT_URL) {
-    try {
-      process.env.DIRECT_URL = getDirectUrl();
-    } catch (error) {
-      // Config not available, will use default error handling
-    }
-  }
-}
 
 /**
  * Create a new Prisma Client instance
  *
- * Note: We don't override the datasource URL here because we've already
- * set the environment variables above. The datasource override in PrismaClient
- * constructor doesn't prevent the initial env validation error.
+ * CRITICAL: We override the datasource URL directly to bypass Prisma's
+ * env validation at module import time. This allows runtime config to work.
  */
 function createPrismaClient(): PrismaClient {
-  // Ensure environment variables are set from runtime config
-  setupPrismaEnvVars();
+  // Get database URL from runtime config or env
+  let databaseUrl: string;
+  let directUrl: string;
 
+  try {
+    databaseUrl = getDatabaseUrl();
+    directUrl = getDirectUrl();
+  } catch (error) {
+    // Runtime config not available, will use Prisma's default env handling
+    databaseUrl = process.env.DATABASE_URL || '';
+    directUrl = process.env.DIRECT_URL || '';
+  }
+
+  // Store the URL for change detection
+  globalForPrisma.databaseUrl = databaseUrl;
+
+  // Create Prisma Client with explicit datasource URLs
+  // This bypasses the env() validation in schema.prisma
   return new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   });
 }
@@ -63,8 +59,23 @@ function createPrismaClient(): PrismaClient {
  *
  * This function lazily initializes the client, ensuring that runtime config
  * is loaded before Prisma tries to access environment variables.
+ *
+ * If the database URL has changed (e.g., after setup), it creates a new client.
  */
 export function getPrismaClient(): PrismaClient {
+  // Check if we need to recreate the client (database URL changed)
+  if (globalForPrisma.prisma) {
+    try {
+      const currentUrl = getDatabaseUrl();
+      if (currentUrl !== globalForPrisma.databaseUrl) {
+        console.log('[Prisma] Database URL changed, recreating client...');
+        globalForPrisma.prisma = undefined;
+      }
+    } catch {
+      // Runtime config not available, keep existing client
+    }
+  }
+
   if (!globalForPrisma.prisma) {
     globalForPrisma.prisma = createPrismaClient();
   }
@@ -79,12 +90,5 @@ export const prisma = new Proxy({} as PrismaClient, {
     return client[prop as keyof PrismaClient];
   },
 });
-
-if (process.env.NODE_ENV !== 'production') {
-  // In development, store the actual client for hot reload handling
-  if (!globalForPrisma.prisma) {
-    globalForPrisma.prisma = getPrismaClient();
-  }
-}
 
 export default prisma;

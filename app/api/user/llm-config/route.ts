@@ -155,8 +155,20 @@ export async function POST(request: NextRequest) {
       password: validatedData.password,
     });
 
-    // For SESSION storage, set the temp key cookie
+    // For SESSION storage, set the temp key cookie with the API key
     if (validatedData.storagePreference === 'SESSION' && validatedData.apiKey) {
+      cookieStore.set('llm_temp_key', validatedData.apiKey, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+        path: '/',
+      });
+    }
+
+    // For DATABASE storage with API key provided, also set the temp key cookie
+    // This allows the user to immediately use LLM features without re-logging in
+    if (validatedData.storagePreference === 'DATABASE' && validatedData.apiKey) {
       cookieStore.set('llm_temp_key', validatedData.apiKey, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',

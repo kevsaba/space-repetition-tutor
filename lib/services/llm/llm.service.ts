@@ -196,6 +196,9 @@ export class LLMService {
    * @returns Generated questions
    */
   async generateQuestions(input: GenerateQuestionsInput): Promise<LLMQuestionResponse> {
+    // Use user's LLM config (per-user configuration)
+    const userConfig = await getLLMConfigWithUserFallback();
+
     const prompt = getGenerateQuestionsPrompt(
       input.topic,
       input.difficulty,
@@ -208,7 +211,7 @@ export class LLMService {
       try {
         const content = await this.callLLM([
           { role: 'user', content: prompt },
-        ]);
+        ], userConfig);
 
         const parsed = extractJSON(content);
         return validateQuestionResponse(parsed);
@@ -219,14 +222,14 @@ export class LLMService {
             { role: 'user', content: prompt },
             { role: 'assistant', content: 'Invalid JSON format' },
             { role: 'user', content: CLARIFYING_INSTRUCTION },
-          ]);
+          ], userConfig);
 
           const parsed = extractJSON(clarifiedContent);
           return validateQuestionResponse(parsed);
         }
         throw error;
       }
-    }, this.getConfig().retry, 'generateQuestions');
+    }, userConfig.retry, 'generateQuestions');
   }
 
   /**
@@ -236,6 +239,9 @@ export class LLMService {
    * @returns Follow-up questions
    */
   async generateFollowUp(input: GenerateFollowUpInput): Promise<LLMFollowUpResponse> {
+    // Use user's LLM config (per-user configuration)
+    const userConfig = await getLLMConfigWithUserFallback();
+
     const prompt = getGenerateFollowUpPrompt(
       input.originalQuestion,
       input.userAnswer,
@@ -247,7 +253,7 @@ export class LLMService {
       try {
         const content = await this.callLLM([
           { role: 'user', content: prompt },
-        ]);
+        ], userConfig);
 
         const parsed = extractJSON(content);
         return validateFollowUpResponse(parsed);
@@ -258,14 +264,14 @@ export class LLMService {
             { role: 'user', content: prompt },
             { role: 'assistant', content: 'Invalid JSON format' },
             { role: 'user', content: CLARIFYING_INSTRUCTION },
-          ]);
+          ], userConfig);
 
           const parsed = extractJSON(clarifiedContent);
           return validateFollowUpResponse(parsed);
         }
         throw error;
       }
-    }, this.getConfig().retry, 'generateFollowUp');
+    }, userConfig.retry, 'generateFollowUp');
   }
 
   /**

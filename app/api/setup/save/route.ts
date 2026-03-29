@@ -9,22 +9,23 @@
  *
  * Note: Changes to .env.local require a server restart to take effect for middleware.
  * However, runtime.json changes are picked up immediately by API routes.
+ *
+ * LLM configuration is done per-user in settings, not globally.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { saveRuntimeConfig } from '@/lib/config/runtime';
 import fs from 'fs';
 import path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 interface SaveRequest {
   database: {
     url: string;
     directUrl: string;
-  };
-  llm: {
-    apiUrl: string;
-    apiKey: string;
-    model: string;
   };
 }
 
@@ -40,11 +41,6 @@ function writeEnvLocal(config: SaveRequest): void {
       `DATABASE_URL="${config.database.url}"`,
       `DIRECT_URL="${config.database.directUrl}"`,
       '',
-      '# LLM Configuration',
-      `LLM_API_URL="${config.llm.apiUrl}"`,
-      `LLM_API_KEY="${config.llm.apiKey}"`,
-      `LLM_MODEL="${config.llm.model}"`,
-      '',
       '# Setup completed at: ' + new Date().toISOString(),
     ].join('\n');
 
@@ -56,14 +52,62 @@ function writeEnvLocal(config: SaveRequest): void {
 }
 
 /**
+ * Run Prisma schema push to set up database schema
+ * This is called when a new user completes setup
+ *
+ * Uses "prisma db push" instead of migrations because:
+ * 1. Fresh database has no _prisma_migrations table
+ * 2. migrate deploy fails without that table
+ * 3. db push creates all tables directly from schema
+ * 4. Perfect for initial setup and self-hosted deployments
+ */
+async function runMigrations(): Promise<{ success: boolean; message: string }> {
+  const env = {
+    ...process.env,
+    DATABASE_URL: process.env.DATABASE_URL,
+    DIRECT_URL: process.env.DIRECT_URL,
+  };
+
+  try {
+    // Generate Prisma client first
+    await execAsync('npx prisma generate', {
+      env,
+      cwd: process.cwd(),
+      timeout: 60000,
+    });
+
+    // Push schema to database (creates all tables)
+    const { stdout, stderr } = await execAsync('npx prisma db push --skip-generate', {
+      env,
+      cwd: process.cwd(),
+      timeout: 60000,
+    });
+
+    if (stderr && !stderr.includes('warn')) {
+      console.error('DB push stderr:', stderr);
+    }
+
+    console.log('DB push stdout:', stdout);
+    return { success: true, message: 'Database schema created successfully.' };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('DB push error:', error);
+    return {
+      success: false,
+      message: `Failed to set up database: ${errorMsg}`
+    };
+  }
+}
+
+/**
  * POST handler for saving configuration
  */
 export async function POST(request: NextRequest) {
   try {
     const body: SaveRequest = await request.json();
-    const { database, llm } = body;
+    const { database } = body;
 
-    // Validate required fields
+    // Validate required fields - only database now
     if (!database?.url || !database?.directUrl) {
       return NextResponse.json(
         { success: false, error: 'Database configuration is required' },
@@ -71,14 +115,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!llm?.apiKey || !llm?.model) {
-      return NextResponse.json(
-        { success: false, error: 'LLM configuration is required' },
-        { status: 400 }
-      );
-    }
-
-    // Save to runtime config (for API routes)
+    // Save to runtime config (for API routes) - only database now
     saveRuntimeConfig({
       isConfigured: true,
       database: {
@@ -86,26 +123,36 @@ export async function POST(request: NextRequest) {
         directUrl: database.directUrl,
       },
       llm: {
-        apiUrl: llm.apiUrl || 'https://api.openai.com/v1',
-        apiKey: llm.apiKey,
-        model: llm.model,
+        // LLM config is per-user, set defaults here
+        apiUrl: 'https://api.openai.com/v1',
+        apiKey: '',
+        model: 'gpt-4o-mini',
       },
       setupCompletedAt: new Date().toISOString(),
     });
 
     // Also write to .env.local for middleware and next build
-    writeEnvLocal({ database, llm });
+    writeEnvLocal({ database });
 
     // Set process.env for immediate use in this request lifecycle
     process.env.DATABASE_URL = database.url;
     process.env.DIRECT_URL = database.directUrl;
-    process.env.LLM_API_URL = llm.apiUrl || 'https://api.openai.com/v1';
-    process.env.LLM_API_KEY = llm.apiKey;
-    process.env.LLM_MODEL = llm.model;
+
+    // Run database migrations for new setup (with self-healing)
+    const migrationResult = await runMigrations();
+
+    if (!migrationResult.success) {
+      console.error('Migration failed during setup:', migrationResult.message);
+      // Return error so user knows what happened
+      return NextResponse.json(
+        { success: false, error: migrationResult.message },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Configuration saved. Please restart the server for middleware changes to take effect.',
+      message: migrationResult.message,
     });
   } catch (error) {
     console.error('Setup save error:', error);
